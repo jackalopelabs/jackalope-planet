@@ -130,27 +130,36 @@ class JackalopeScene {
     }
     
     setupEventListeners(container) {
-        // Mouse controls for orbiting in third-person and pointer lock in first-person
+        // Mouse controls
         container.addEventListener('mousedown', (event) => {
-            if (this.mode === 'third_person') {
-                this.isMouseDown = true;
-                this.prevMouseX = event.clientX;
-                this.prevMouseY = event.clientY;
-                this.instructions.style.display = 'none';
-            } else if (this.mode === 'first_person') {
+            if (this.mode === 'first_person') {
                 this.controls.lock();
             }
+            this.instructions.style.display = 'none';
         });
         
         document.addEventListener('mousemove', (event) => {
-            if (this.isMouseDown && this.mode === 'third_person') {
+            // For third-person mode: always track mouse movement for camera orbit
+            // without requiring click and drag
+            if (this.mode === 'third_person' && this.instructions.style.display === 'none') {
+                // Calculate mouse movement since last frame
+                if (this.prevMouseX === 0 && this.prevMouseY === 0) {
+                    // First movement after showing the game, just store position
+                    this.prevMouseX = event.clientX;
+                    this.prevMouseY = event.clientY;
+                    return;
+                }
+                
                 const deltaX = event.clientX - this.prevMouseX;
                 const deltaY = event.clientY - this.prevMouseY;
                 
-                this.targetCameraAngle -= deltaX * this.orbitSpeed;
+                // Adjust sensitivity for free movement (lower than drag sensitivity)
+                const freeOrbitSpeed = this.orbitSpeed * 0.6;
+                
+                this.targetCameraAngle -= deltaX * freeOrbitSpeed;
                 this.targetCameraAngleY = Math.max(
                     0.1,
-                    Math.min(1.5, this.targetCameraAngleY - deltaY * this.orbitSpeed)
+                    Math.min(1.5, this.targetCameraAngleY - deltaY * freeOrbitSpeed)
                 );
                 
                 this.prevMouseX = event.clientX;
@@ -158,13 +167,14 @@ class JackalopeScene {
             }
         });
         
-        document.addEventListener('mouseup', () => {
-            this.isMouseDown = false;
-        });
-        
         // Click to dismiss instructions or lock pointer
         this.instructions.addEventListener('click', () => {
             this.instructions.style.display = 'none';
+            
+            // Reset mouse position tracking when starting the game
+            this.prevMouseX = 0;
+            this.prevMouseY = 0;
+            
             if (this.mode === 'first_person') {
                 this.controls.lock();
             }

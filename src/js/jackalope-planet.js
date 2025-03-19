@@ -20,6 +20,12 @@ class JackalopeScene {
         this.thirdPersonDistance = 5;
         this.thirdPersonHeight = 2;
         
+        // Movement directions
+        this.moveForward = false;
+        this.moveBackward = false;
+        this.moveLeft = false;
+        this.moveRight = false;
+        
         // Additional properties to fix vibration
         this.cameraTarget = new THREE.Vector3();
         this.playerDirection = new THREE.Vector3(0, 0, -1);
@@ -135,12 +141,16 @@ class JackalopeScene {
             
             if (key === 'KeyW') {
                 this.keys.w = pressed;
+                this.moveForward = pressed;
             } else if (key === 'KeyA') {
                 this.keys.a = pressed;
+                this.moveLeft = pressed;
             } else if (key === 'KeyS') {
                 this.keys.s = pressed;
+                this.moveBackward = pressed;
             } else if (key === 'KeyD') {
                 this.keys.d = pressed;
+                this.moveRight = pressed;
             } else if (key === 'KeyT' && pressed) {
                 if (this.mode === 'first_person') {
                     this.switchToThirdPerson();
@@ -173,12 +183,22 @@ class JackalopeScene {
     }
     
     createGround() {
+        // Create a grid helper for the ground - fixed orientation
+        const gridSize = 100;
+        const gridDivisions = 100;
+        const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0xffffff, 0x888888);
+        // No rotation needed - GridHelper is already on the XZ plane by default
+        gridHelper.position.y = 0.01; // Slightly above the ground to prevent z-fighting
+        this.scene.add(gridHelper);
+        
         // Simple flat ground plane
         const groundGeometry = new THREE.PlaneGeometry(100, 100);
         const groundMaterial = new THREE.MeshStandardMaterial({
             color: 0x8844aa,
             roughness: 0.7,
-            metalness: 0.3
+            metalness: 0.3,
+            transparent: true,
+            opacity: 0.7 // Make the ground semi-transparent to see the grid better
         });
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = -Math.PI / 2; // Lay flat on XZ plane
@@ -270,19 +290,35 @@ class JackalopeScene {
         const delta = this.clock.getDelta();
         
         if (this.mode === 'first_person') {
-            // First-person mode controls
-            if (this.keys.w) this.controls.moveForward(this.movementSpeed * delta);
-            if (this.keys.s) this.controls.moveBackward(this.movementSpeed * delta);
-            if (this.keys.a) this.controls.moveRight(-this.movementSpeed * delta);
-            if (this.keys.d) this.controls.moveRight(this.movementSpeed * delta);
+            // First-person mode controls - Manual movement implementation
+            const controlObject = this.controls.getObject();
+            const velocity = new THREE.Vector3();
+            const direction = new THREE.Vector3();
+            
+            // Calculate velocity based on keys
+            direction.z = Number(this.moveForward) - Number(this.moveBackward);
+            direction.x = Number(this.moveLeft) - Number(this.moveRight); // Fixed inverted controls
+            direction.normalize();
+            
+            if (this.moveForward || this.moveBackward) {
+                velocity.z -= direction.z * this.movementSpeed * delta;
+            }
+            if (this.moveLeft || this.moveRight) {
+                velocity.x -= direction.x * this.movementSpeed * delta;
+            }
+            
+            // Move the camera
+            controlObject.translateX(velocity.x);
+            controlObject.translateZ(velocity.z);
             
             // Update player position to follow camera
-            const cameraPosition = this.controls.getObject().position;
+            const cameraPosition = controlObject.position;
             this.player.position.x = cameraPosition.x;
             this.player.position.z = cameraPosition.z;
             
             // Keep player on the ground
             this.player.position.y = 0.5; // Half height above ground
+            controlObject.position.y = this.player.position.y + this.eyeHeight;
             
             // Update player rotation to match camera yaw (only Y rotation)
             const cameraDirection = new THREE.Vector3(0, 0, -1);

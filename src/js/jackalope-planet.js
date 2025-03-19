@@ -29,6 +29,8 @@ class JackalopeScene {
         // Additional properties to fix vibration
         this.cameraTarget = new THREE.Vector3();
         this.playerDirection = new THREE.Vector3(0, 0, -1);
+        this.lastCameraForward = new THREE.Vector3(0, 0, -1);
+        this.isMovingBackward = false;
         
         this.init();
     }
@@ -217,8 +219,8 @@ class JackalopeScene {
             new THREE.ConeGeometry(0.2, 0.5, 4),
             new THREE.MeshStandardMaterial({ color: 0xff3333 })
         );
-        directionIndicator.position.set(0, 0, -0.75);
-        directionIndicator.rotation.x = Math.PI / 2;
+        directionIndicator.position.set(0, 0, 0.75); // Changed from -0.75 to 0.75 to be at front
+        directionIndicator.rotation.x = -Math.PI / 2; // Changed to point forward
         this.player.add(directionIndicator);
         
         this.player.position.set(0, 0.5, 0); // Half height above ground
@@ -331,66 +333,91 @@ class JackalopeScene {
                 this.player.lookAt(this.player.position.clone().add(cameraDirection));
             }
         } else if (this.mode === 'third_person') {
-            // Use the camera's forward vector for player movement
-            const cameraDirection = new THREE.Vector3();
-            this.camera.getWorldDirection(cameraDirection);
-            cameraDirection.y = 0; // Keep on xz plane
-            cameraDirection.normalize();
+            // Get camera's forward direction (projected onto XZ plane)
+            const cameraForward = new THREE.Vector3();
+            this.camera.getWorldDirection(cameraForward);
+            cameraForward.y = 0; // Keep movement on ground plane
+            cameraForward.normalize();
             
-            // Compute right vector
-            const right = new THREE.Vector3(1, 0, 0);
-            right.applyQuaternion(this.camera.quaternion);
-            right.y = 0;
-            right.normalize();
+            // Store the camera's forward direction for stability if this is the first frame
+            if (!this.lastCameraForward) {
+                this.lastCameraForward = cameraForward.clone();
+            }
             
-            // Apply player movement based on camera orientation
-            let moved = false;
-            const movementVector = new THREE.Vector3(0, 0, 0);
+            // Get camera's right direction - correctly calculated for intuitive controls
+            const cameraRight = new THREE.Vector3();
+            cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0)).normalize();
+            
+            // Calculate movement vector based on camera orientation
+            const movementVector = new THREE.Vector3();
+            let isMovingForward = false;
+            const wasMovingBackward = this.isMovingBackward;
+            this.isMovingBackward = false;
+            let isStrafing = false;
             
             if (this.keys.w) {
-                movementVector.add(cameraDirection.clone().multiplyScalar(this.movementSpeed * delta));
-                moved = true;
+                movementVector.add(cameraForward.clone().multiplyScalar(this.movementSpeed * delta));
+                isMovingForward = true;
             }
             if (this.keys.s) {
-                movementVector.add(cameraDirection.clone().multiplyScalar(-this.movementSpeed * delta));
-                moved = true;
+                movementVector.add(cameraForward.clone().multiplyScalar(-this.movementSpeed * delta));
+                this.isMovingBackward = true;
             }
             if (this.keys.a) {
-                movementVector.add(right.clone().multiplyScalar(-this.movementSpeed * delta));
-                moved = true;
+                movementVector.add(cameraRight.clone().multiplyScalar(-this.movementSpeed * delta));
+                isStrafing = true;
             }
             if (this.keys.d) {
-                movementVector.add(right.clone().multiplyScalar(this.movementSpeed * delta));
-                moved = true;
+                movementVector.add(cameraRight.clone().multiplyScalar(this.movementSpeed * delta));
+                isStrafing = true;
             }
             
-            if (moved) {
-                // Update player position
+            // Apply movement to player
+            const isMoving = movementVector.lengthSq() > 0.0001;
+            if (isMoving) {
                 this.player.position.add(movementVector);
                 
-                // Update player rotation to face movement direction
-                if (movementVector.length() > 0.001) {
-                    this.playerDirection.lerp(movementVector.normalize(), 0.1);
-                    this.player.lookAt(this.player.position.clone().add(this.playerDirection));
+                // Determine target direction for player to face
+                let targetDirection;
+                
+                if (isMovingForward) {
+                    // Moving forward takes priority - always face forward 
+                    targetDirection = cameraForward.clone();
+                    
+                    // Store this direction for later when we need backward facing
+                    this.lastCameraForward.copy(cameraForward);
+                } 
+                else if (this.isMovingBackward && !isStrafing) {
+                    // Moving backward - face backward (away from camera)
+                    // Use the last known forward direction to prevent flipping
+                    targetDirection = this.lastCameraForward.clone().negate();
+                }
+                
+                // Only update rotation if we have a target direction and aren't only strafing
+                if (targetDirection && (!isStrafing || isMovingForward || this.isMovingBackward)) {
+                    // Slower lerp for backward movement to prevent oscillation
+                    const lerpFactor = this.isMovingBackward ? 0.03 : 0.1;
+                    
+                    // Apply smooth rotation
+                    this.playerDirection.lerp(targetDirection, lerpFactor);
+                    const lookTarget = this.player.position.clone().add(this.playerDirection);
+                    this.player.lookAt(lookTarget);
                 }
             }
             
-            // Update camera position relative to player
+            // Camera follows player - position always based on player's facing direction, not movement
             const cameraOffset = new THREE.Vector3();
-            cameraOffset.copy(this.player.position);
             
-            // Move camera behind player based on player's orientation
-            const backward = new THREE.Vector3(0, 0, 1);
-            backward.applyQuaternion(this.player.quaternion);
-            backward.multiplyScalar(this.thirdPersonDistance);
+            // Make camera position opposite to player facing direction
+            cameraOffset.copy(this.playerDirection).negate().multiplyScalar(this.thirdPersonDistance);
+            cameraOffset.y = this.thirdPersonHeight;
             
-            cameraOffset.add(backward);
-            cameraOffset.y += this.thirdPersonHeight;
+            const targetCameraPosition = this.player.position.clone().add(cameraOffset);
             
-            // Smoothly move camera to target position
-            this.camera.position.lerp(cameraOffset, 0.1);
+            // Very smooth camera movement to prevent jitter
+            this.camera.position.lerp(targetCameraPosition, 0.05);
             
-            // Update camera target
+            // Camera always looks at player 
             this.cameraTarget.copy(this.player.position).add(new THREE.Vector3(0, 0.5, 0));
             this.camera.lookAt(this.cameraTarget);
         }

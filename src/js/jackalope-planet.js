@@ -159,9 +159,13 @@ class JackalopeScene {
                 const freeOrbitSpeed = this.orbitSpeed * 0.6;
                 
                 this.targetCameraAngle -= deltaX * freeOrbitSpeed;
+                
+                // Invert the deltaY to fix the inverted camera controls
+                // Moving mouse up should raise the camera (decrease targetCameraAngleY)
+                // Moving mouse down should lower the camera (increase targetCameraAngleY)
                 this.targetCameraAngleY = Math.max(
                     0.1,
-                    Math.min(1.5, this.targetCameraAngleY - deltaY * freeOrbitSpeed)
+                    Math.min(1.5, this.targetCameraAngleY + deltaY * freeOrbitSpeed)
                 );
                 
                 this.prevMouseX = event.clientX;

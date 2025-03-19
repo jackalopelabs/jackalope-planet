@@ -91,7 +91,7 @@ class Jackalope_Planet {
             
             <!-- Controls hint -->
             <div class="jackalope-planet-controls-hint">
-                <p>The scene rotates automatically to showcase the 3D Jackalope Planet</p>
+                <p>Click to play in game mode! Use WASD to move, mouse to look around, T to toggle between first-person and third-person, ESC to exit.</p>
             </div>
         </div>
         <?php

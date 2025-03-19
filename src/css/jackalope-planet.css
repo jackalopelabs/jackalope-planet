@@ -19,13 +19,36 @@
 
     .jackalope-planet-controls-hint {
         position: absolute;
-        bottom: 1rem;
+        bottom: 10px;
         left: 0;
         right: 0;
         text-align: center;
         color: white;
         background-color: rgba(0, 0, 0, 0.5);
-        padding: 0.5rem 1rem;
-        font-size: 0.875rem;
+        padding: 5px;
+        border-radius: 5px;
+        font-family: Arial, sans-serif;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    .instructions-content {
+        max-width: 400px;
+        background-color: rgba(0, 0, 0, 0.7);
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .instructions-content h2 {
+        font-size: 24px;
+        margin-bottom: 15px;
+        color: #bb8855;
+    }
+
+    .instructions-content p {
+        margin: 8px 0;
+        font-size: 16px;
+        line-height: 1.4;
     }
 } 

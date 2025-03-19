@@ -8,18 +8,22 @@ class Flamethrower extends HumanWeapon {
             name: 'Flamethrower',
             damage: 5,
             cooldown: 0.05, // Continuous spray effect
-            range: 15,
+            range: 30, // Increased from 15 for longer flame reach
             ...options
         });
         
         // Flamethrower specific properties
         this.particleCount = options.particleCount || 300; // Reduced for better performance
-        this.flameLength = options.flameLength || 10;
+        this.flameLength = options.flameLength || 25; // Increased from 10 for longer flames
         this.flameWidth = options.flameWidth || 2;
         this.particleSystem = null;
         this.particles = [];
         this.particleGeometry = null;
         this.particleMaterial = null;
+        
+        // Store the current flame origin and direction for reference in update
+        this.flameOrigin = new THREE.Vector3();
+        this.flameDirection = new THREE.Vector3(0, 0, 1);
         
         // Flame colors
         this.flameColors = [
@@ -82,17 +86,43 @@ class Flamethrower extends HumanWeapon {
         const lineGeometry = new THREE.BufferGeometry();
         const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
         
+        // Create a line showing the actual flame path (much longer)
         const points = [
             this.nozzleTipPosition.clone(),
             new THREE.Vector3(
                 this.nozzleTipPosition.x, 
-                this.nozzleTipPosition.y, 
-                this.nozzleTipPosition.z + 5.0
-            )  // Extended forward
+                this.nozzleTipPosition.y + 0.5, // Show the upward arc 
+                this.nozzleTipPosition.z + 20.0  // Extended much further
+            )
         ];
         
         lineGeometry.setFromPoints(points);
         this.debugLine = new THREE.Line(lineGeometry, lineMaterial);
+        
+        // Add more debug markers along the path to visualize range
+        const markerPositions = [5, 10, 15];
+        this.rangeMarkers = [];
+        
+        markerPositions.forEach((distance, index) => {
+            const markerGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+            const markerMaterial = new THREE.MeshBasicMaterial({ 
+                color: index === 0 ? 0x00ffff : index === 1 ? 0xffff00 : 0xff00ff,
+                transparent: true,
+                opacity: 0.5
+            });
+            
+            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+            marker.position.set(
+                this.nozzleTipPosition.x, 
+                this.nozzleTipPosition.y + (distance / 40) * 0.5, // Slight arc upward
+                this.nozzleTipPosition.z + distance
+            );
+            
+            if (this.model) {
+                this.model.add(marker);
+                this.rangeMarkers.push(marker);
+            }
+        });
         
         if (this.model) {
             this.model.add(this.debugLine);
@@ -114,46 +144,50 @@ class Flamethrower extends HumanWeapon {
         });
         const tank = new THREE.Mesh(tankGeometry, tankMaterial);
         tank.rotation.x = Math.PI / 2; // Lay horizontally
-        tank.position.set(0.3, -0.15, 0.4);
+        tank.position.set(0.15, -0.2, -0.1); // Repositioned to be more in front of player
         tank.castShadow = true;
         tank.receiveShadow = true;
         group.add(tank);
         
         // Nozzle (cone)
-        const nozzleGeometry = new THREE.CylinderGeometry(0.03, 0.05, 0.2, 8);
+        const nozzleGeometry = new THREE.CylinderGeometry(0.03, 0.05, 0.25, 8); // Longer nozzle
         const nozzleMaterial = new THREE.MeshStandardMaterial({ 
             color: 0x222222,
             metalness: 0.5,
             roughness: 0.5
         });
         const nozzle = new THREE.Mesh(nozzleGeometry, nozzleMaterial);
-        nozzle.position.set(0.3, -0.15, 0.7); // In front of the tank
+        nozzle.position.set(0.15, -0.2, 0.15); // Positioned in front of the tank
         nozzle.rotation.x = Math.PI / 2; // Point forward
         nozzle.castShadow = true;
         nozzle.receiveShadow = true;
         group.add(nozzle);
         
         // Store the nozzle tip position in local space of the weapon model
-        // More precise calculation of the tip position by using nozzle dimensions
+        // This is the actual position where flame particles should originate from
+        // Calculate precisely at the end of the nozzle
         this.nozzleTipPosition = new THREE.Vector3(
             nozzle.position.x,           // Same x as nozzle
             nozzle.position.y,           // Same y as nozzle
-            nozzle.position.z + 0.12     // Slightly in front of nozzle (half of nozzle length + small offset)
+            nozzle.position.z + 0.2      // At the very front tip of the nozzle
         );
         
-        // Add a visual marker at the nozzle tip (only visible in debug mode)
+        // Add a visual marker at the nozzle tip - make it much more visible
         if (this.debug) {
             const tipMarker = new THREE.Mesh(
-                new THREE.SphereGeometry(0.02, 8, 8),
-                new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+                new THREE.SphereGeometry(0.03, 16, 16),
+                new THREE.MeshBasicMaterial({ 
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.8
+                })
             );
             tipMarker.position.copy(this.nozzleTipPosition);
             group.add(tipMarker);
         }
         
-        // Position for FPS view - adjust based on first-person camera perspective
-        // Position to be visible in first-person view but not too obtrusive
-        group.position.set(0.3, -0.4, -0.5); // Right side, below center, forward
+        // Position for FPS view - moved forward so nozzle tip is clearly visible
+        group.position.set(0.3, -0.3, -0.1); // Right side, below, much more forward
         
         this.model = group;
         
@@ -208,14 +242,16 @@ class Flamethrower extends HumanWeapon {
             this.particleGeometry.setAttribute('particleColor', new THREE.BufferAttribute(particleColors, 3));
             this.particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
             
-            // Create a simpler particle material to ensure visibility
+            // Create a better particle material with improved settings
             this.particleMaterial = new THREE.PointsMaterial({
-                size: 2,
-                sizeAttenuation: true,
-                map: this.createFlameTexture(),
-                alphaTest: 0.1,
-                transparent: true,
-                vertexColors: true
+                size: 3,                          // Larger base size
+                sizeAttenuation: true,           // Size reduces with distance
+                map: this.createFlameTexture(),  // Custom flame texture
+                alphaTest: 0.05,                 // Lower value = less transparent pixels culled
+                transparent: true,               // Enable transparency
+                vertexColors: true,              // Use colors from vertices
+                depthWrite: false,               // Don't write to depth buffer (better blending)
+                blending: THREE.AdditiveBlending // Additive blending for glow effect
             });
             
             // Create particle system
@@ -239,27 +275,46 @@ class Flamethrower extends HumanWeapon {
     
     createFlameTexture() {
         const canvas = document.createElement('canvas');
-        canvas.width = 64;
-        canvas.height = 64;
+        canvas.width = 128; // Higher resolution
+        canvas.height = 128;
         
         const context = canvas.getContext('2d');
         
-        // Create radial gradient for glowing fireball effect with orange, red, and yellow
+        // Create radial gradient for a more vibrant fireball effect
         const gradient = context.createRadialGradient(
-            32, 32, 0,   // Center and inner radius
-            32, 32, 32   // Center and outer radius
+            64, 64, 0,    // Center and inner radius
+            64, 64, 64    // Center and outer radius
         );
         
-        gradient.addColorStop(0, 'rgba(255, 255, 0, 1)');      // Bright yellow center (glowing core)
-        gradient.addColorStop(0.3, 'rgba(255, 165, 0, 1)');    // Orange midsection
-        gradient.addColorStop(0.7, 'rgba(255, 69, 0, 0.8)');   // Red-orange edge
-        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');        // Fade to transparent red
+        // More vibrant color stops with smoother transition
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');   // White hot center (glowing core)
+        gradient.addColorStop(0.2, 'rgba(255, 255, 0, 1)');    // Bright yellow
+        gradient.addColorStop(0.4, 'rgba(255, 165, 0, 1)');    // Orange
+        gradient.addColorStop(0.6, 'rgba(255, 69, 0, 0.9)');   // Red-orange
+        gradient.addColorStop(0.8, 'rgba(255, 0, 0, 0.5)');    // Semi-transparent red
+        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');        // Fully transparent edge
         
         context.fillStyle = gradient;
-        context.fillRect(0, 0, 64, 64);
+        context.fillRect(0, 0, 128, 128);
+        
+        // Add some noise/texture for more realistic fire particles
+        context.globalCompositeOperation = 'overlay';
+        
+        // Add some sparks/specks for texture
+        for (let i = 0; i < 20; i++) {
+            const x = Math.random() * 128;
+            const y = Math.random() * 128;
+            const radius = Math.random() * 3 + 1;
+            
+            context.beginPath();
+            context.arc(x, y, radius, 0, Math.PI * 2);
+            context.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            context.fill();
+        }
         
         const texture = new THREE.Texture(canvas);
         texture.needsUpdate = true;
+        
         return texture;
     }
     
@@ -299,62 +354,46 @@ class Flamethrower extends HumanWeapon {
         // Number of particles to emit per shot
         const emitCount = 20; // Fewer particles, better performance
         
-        // Get world position for flame origin
-        const flameOrigin = new THREE.Vector3();
-        const flameDirection = new THREE.Vector3(0, 0, 1); // Forward direction
+        // Reset and update the world position for flame origin
+        this.flameOrigin.set(0, 0, 0);
+        this.flameDirection.set(0, 0, 1); // Forward direction
         
         try {
+            // Ensure model exists and is properly set up
+            if (!this.model) {
+                console.warn('Weapon model not available');
+                return;
+            }
+            
+            // Always update matrices to ensure accurate positions
+            this.model.updateMatrixWorld(true);
+            
+            // Get the exact world position of the nozzle tip
+            const nozzleTipWorld = new THREE.Vector3();
+            nozzleTipWorld.copy(this.nozzleTipPosition).applyMatrix4(this.model.matrixWorld);
+            
+            // Store the world position as our flame origin
+            this.flameOrigin.copy(nozzleTipWorld);
+            
+            // Determine flame direction based on view mode
             if (this.player.isFirstPerson && this.player.fpCamera) {
-                // First-person mode - use model position in world space
+                // In first-person, use camera direction
+                this.player.fpCamera.getWorldDirection(this.flameDirection);
                 
-                // Get world transform of the model
-                if (!this.model) {
-                    console.warn('Model not available for first-person weapon');
-                    return;
-                }
-                
-                // Ensure matrices are up to date
-                this.model.updateMatrixWorld(true);
-                
-                // Create a temporary vector for nozzle tip position
-                const nozzleTipWorld = new THREE.Vector3();
-                
-                // Convert the local nozzle tip position to world coordinates
-                nozzleTipWorld.copy(this.nozzleTipPosition).applyMatrix4(this.model.matrixWorld);
-                
-                // Set the flame origin to the world position of the nozzle tip
-                flameOrigin.copy(nozzleTipWorld);
-                
-                // Get camera direction for the flame direction
-                this.player.fpCamera.getWorldDirection(flameDirection);
-                
-                // Log position for debugging
                 if (this.debug) {
-                    console.log('FP Nozzle world position:', flameOrigin.clone());
-                    console.log('FP Flame direction:', flameDirection.clone());
+                    console.log('FP Nozzle world position:', this.flameOrigin.clone());
+                    console.log('FP Flame direction:', this.flameDirection.clone());
                 }
             } else if (this.player.model) {
-                // Third-person mode
+                // In third-person, use model direction
+                this.player.model.getWorldDirection(this.flameDirection);
                 
-                if (this.model) {
-                    // Ensure matrices are up to date
-                    this.model.updateMatrixWorld(true);
-                    
-                    // Convert the local nozzle tip position to world coordinates
-                    const nozzleTipWorld = new THREE.Vector3();
-                    nozzleTipWorld.copy(this.nozzleTipPosition).applyMatrix4(this.model.matrixWorld);
-                    
-                    // Set the flame origin
-                    flameOrigin.copy(nozzleTipWorld);
-                } else {
-                    console.warn('Model not available for third-person weapon');
-                    return;
+                if (this.debug) {
+                    console.log('TP Nozzle world position:', this.flameOrigin.clone());
+                    console.log('TP Flame direction:', this.flameDirection.clone());
                 }
-                
-                // Get forward direction from model
-                this.player.model.getWorldDirection(flameDirection);
             } else {
-                console.warn('Cannot determine flame origin: player model or camera not ready');
+                console.warn('Cannot determine flame direction: player model or camera not ready');
                 return;
             }
             
@@ -376,32 +415,37 @@ class Flamethrower extends HumanWeapon {
                 
                 // Reuse dead particles
                 if (particle.life <= 0) {
-                    // Reset particle
-                    particle.position.copy(flameOrigin);
+                    // Reset particle position to flame origin
+                    particle.position.copy(this.flameOrigin);
                     
                     // Calculate random spread - reduced spread for more focused flame
                     const spread = 0.08; // Reduced spread for a more focused beam
                     const spreadVec = new THREE.Vector3(
                         (Math.random() - 0.5) * spread,
-                        (Math.random() - 0.5) * spread,
+                        (Math.random() - 0.5) * spread + 0.03, // Slight upward bias
                         (Math.random() - 0.5) * spread
                     );
                     
                     // Base velocity in flame direction - increased speed for longer distance
-                    const speed = 12 + Math.random() * 5; // Increased speed for more forward momentum
-                    particle.velocity.copy(flameDirection).normalize().multiplyScalar(speed);
+                    const speed = 25 + Math.random() * 10; // Much higher speed for greater distance
+                    particle.velocity.copy(this.flameDirection).normalize().multiplyScalar(speed);
                     
                     // Add spread
                     particle.velocity.add(spreadVec);
                     
                     // Set particle properties - adjusted for better visual effect
-                    particle.size = 2 + Math.random() * 4; // Smaller starting particles
-                    particle.maxLife = 1.0 + Math.random() * 0.5; // Shorter lifetime for better performance
-                    particle.life = particle.maxLife;
-                    
-                    // Assign random flame color
                     const colorIndex = Math.floor(Math.random() * this.flameColors.length);
                     particle.color.copy(this.flameColors[colorIndex]);
+                    
+                    // Vary initial size more for visual interest
+                    // Larger particles travel further (simulating better aerodynamics)
+                    const initialSizeVariation = Math.random();
+                    particle.size = 1.5 + initialSizeVariation * 4; 
+                    
+                    // Longer life for larger particles - helps with visual consistency
+                    const lifeVariation = 0.8 + initialSizeVariation * 1.2;
+                    particle.maxLife = 2.0 * lifeVariation;
+                    particle.life = particle.maxLife;
                     
                     particlesEmitted++;
                     
@@ -459,10 +503,13 @@ class Flamethrower extends HumanWeapon {
                 particle.position.addScaledVector(particle.velocity, delta);
                 
                 // Add some upward velocity for realistic fire effect
-                particle.velocity.y += 2 * delta;
+                // Dynamic upward force that increases as the particle moves farther
+                const distanceFromStart = particle.position.distanceTo(this.flameOrigin);
+                const upwardForce = 2 + distanceFromStart * 0.1; // More lift the further it travels
+                particle.velocity.y += upwardForce * delta;
                 
-                // Slow down particles gradually
-                particle.velocity.multiplyScalar(0.95);
+                // Slow down particles more gradually to maintain momentum
+                particle.velocity.multiplyScalar(0.98); // Reduced slowdown factor
                 
                 // Fade out based on life
                 const lifeRatio = particle.life / particle.maxLife;
@@ -472,9 +519,12 @@ class Flamethrower extends HumanWeapon {
                 if (lifeRatio > 0.8) {
                     // Growing phase (0.8-1.0 life)
                     sizeMultiplier = 1 - (1 - lifeRatio) * 5; // Map 0.8-1.0 to 0-1
+                } else if (lifeRatio > 0.4) {
+                    // Maintain phase (0.4-0.8 life) - hold size longer for better visual at distance
+                    sizeMultiplier = 1.0; 
                 } else {
-                    // Shrinking phase (0-0.8 life)
-                    sizeMultiplier = lifeRatio * 1.25; // Map 0-0.8 to 0-1, but slightly larger
+                    // Shrinking phase (0-0.4 life)
+                    sizeMultiplier = lifeRatio * 2.5; // Map 0-0.4 to 0-1, faster falloff at the end
                 }
                 
                 // Fade between colors based on life
@@ -597,6 +647,18 @@ class Flamethrower extends HumanWeapon {
             this.refEmitter.geometry.dispose();
             this.refEmitter.material.dispose();
             this.refEmitter = null;
+        }
+        
+        // Clean up range markers
+        if (this.rangeMarkers && this.rangeMarkers.length) {
+            this.rangeMarkers.forEach(marker => {
+                if (marker.parent) {
+                    marker.parent.remove(marker);
+                }
+                marker.geometry.dispose();
+                marker.material.dispose();
+            });
+            this.rangeMarkers = [];
         }
         
         if (this.debugLine) {

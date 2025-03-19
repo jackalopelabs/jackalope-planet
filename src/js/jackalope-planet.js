@@ -39,6 +39,8 @@ class JackalopeScene {
         // Player properties
         this.cameraTarget = new THREE.Vector3();
         this.playerDirection = new THREE.Vector3(0, 0, -1);
+        this.targetPlayerDirection = new THREE.Vector3(0, 0, -1);
+        this.rotationSpeed = 5.0; // Controls how quickly the player rotates to face new direction
         
         this.init();
     }
@@ -454,10 +456,33 @@ class JackalopeScene {
                 // Update player position
                 this.player.position.add(movementVector);
                 
-                // Make player face movement direction
-                this.playerDirection.copy(movementVector).normalize();
-                const lookTarget = this.player.position.clone().add(this.playerDirection);
-                this.player.lookAt(lookTarget);
+                // Set target direction to movement direction
+                this.targetPlayerDirection.copy(movementVector).normalize();
+            }
+            
+            // Smoothly rotate player to face movement direction
+            if (isMoving || this.playerDirection.angleTo(this.targetPlayerDirection) > 0.01) {
+                // Calculate the step size for rotation
+                const step = Math.min(1.0, this.rotationSpeed * delta);
+                
+                // Create a temporary quaternion for the target rotation
+                const targetQuaternion = new THREE.Quaternion();
+                
+                // Calculate the target rotation by creating a matrix from the direction vector
+                // We need to negate the direction because lookAt creates a matrix facing toward -Z
+                const lookMatrix = new THREE.Matrix4();
+                const lookDirection = this.targetPlayerDirection.clone().negate();
+                const upVector = new THREE.Vector3(0, 1, 0);
+                lookMatrix.lookAt(new THREE.Vector3(0, 0, 0), lookDirection, upVector);
+                
+                // Extract the target rotation from the matrix
+                targetQuaternion.setFromRotationMatrix(lookMatrix);
+                
+                // Interpolate current rotation towards target rotation
+                this.player.quaternion.slerp(targetQuaternion, step);
+                
+                // Update stored player direction
+                this.playerDirection.lerp(this.targetPlayerDirection, step).normalize();
             }
         }
         

@@ -214,16 +214,16 @@ class Flamethrower extends HumanWeapon {
         
         const context = canvas.getContext('2d');
         
-        // Create radial gradient for flame particle
+        // Create radial gradient for glowing fireball effect with orange, red, and yellow
         const gradient = context.createRadialGradient(
-            32, 32, 0,
-            32, 32, 32
+            32, 32, 0,   // Center and inner radius
+            32, 32, 32   // Center and outer radius
         );
         
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        gradient.addColorStop(0.3, 'rgba(255, 200, 50, 1)'); // Made more opaque
-        gradient.addColorStop(0.7, 'rgba(255, 50, 0, 0.8)'); // Made more opaque
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        gradient.addColorStop(0, 'rgba(255, 255, 0, 1)');      // Bright yellow center (glowing core)
+        gradient.addColorStop(0.3, 'rgba(255, 165, 0, 1)');    // Orange midsection
+        gradient.addColorStop(0.7, 'rgba(255, 69, 0, 0.8)');   // Red-orange edge
+        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');        // Fade to transparent red
         
         context.fillStyle = gradient;
         context.fillRect(0, 0, 64, 64);

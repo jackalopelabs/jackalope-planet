@@ -60,8 +60,8 @@ class Flamethrower extends HumanWeapon {
         const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
         this.debugEmitter = new THREE.Mesh(sphereGeometry, sphereMaterial);
         
-        // Position at the nozzle - updated to match new emission point
-        this.debugEmitter.position.set(0.3, -0.15, 1.5);
+        // Position at the nozzle tip - use the stored nozzle tip position
+        this.debugEmitter.position.copy(this.nozzleTipPosition);
         
         if (this.model) {
             this.model.add(this.debugEmitter);
@@ -72,8 +72,8 @@ class Flamethrower extends HumanWeapon {
         const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
         
         const points = [
-            new THREE.Vector3(0.3, -0.15, 1.5),
-            new THREE.Vector3(0.3, -0.15, 5.0)  // Extended forward
+            this.nozzleTipPosition.clone(),
+            new THREE.Vector3(this.nozzleTipPosition.x, this.nozzleTipPosition.y, this.nozzleTipPosition.z + 5.0)  // Extended forward
         ];
         
         lineGeometry.setFromPoints(points);
@@ -113,6 +113,10 @@ class Flamethrower extends HumanWeapon {
         nozzle.position.set(0.3, -0.15, 0.7); // In front of the tank
         nozzle.rotation.x = Math.PI / 2; // Point forward
         group.add(nozzle);
+        
+        // Store the nozzle tip position - this is the most important change
+        // Calculate the tip position from the nozzle position and dimensions
+        this.nozzleTipPosition = new THREE.Vector3(0.3, -0.15, 0.8); // Offset from nozzle position to get to the tip
         
         // Position for FPS view
         group.position.set(0.3, -0.4, -0.5); // Right side, below center, forward
@@ -271,8 +275,8 @@ class Flamethrower extends HumanWeapon {
                 this.player.fpCamera.getWorldPosition(flameOrigin);
                 this.player.fpCamera.getWorldDirection(flameDirection);
                 
-                // Create a proper offset vector in front of the camera for the nozzle
-                const nozzleOffset = new THREE.Vector3(0.3, -0.15, 1.5);
+                // Use the nozzle tip position as the offset
+                const nozzleOffset = this.nozzleTipPosition.clone();
                 
                 // Calculate world space offset by using camera's local-to-world transformation
                 const localToWorld = new THREE.Matrix4();
@@ -292,14 +296,13 @@ class Flamethrower extends HumanWeapon {
                 }
             } else if (this.player.model) {
                 // Same process for third-person
-                const nozzlePosition = new THREE.Vector3(0.3, -0.15, 1.7);
-                
                 if (this.model) {
                     const worldMatrix = new THREE.Matrix4();
                     this.model.updateMatrixWorld(true);
                     worldMatrix.copy(this.model.matrixWorld);
                     
-                    const worldPos = nozzlePosition.clone().applyMatrix4(worldMatrix);
+                    // Use the actual nozzle tip position instead of a magic number
+                    const worldPos = this.nozzleTipPosition.clone().applyMatrix4(worldMatrix);
                     flameOrigin.copy(worldPos);
                 }
                 
@@ -332,7 +335,7 @@ class Flamethrower extends HumanWeapon {
                     particle.position.copy(flameOrigin);
                     
                     // Calculate random spread - reduced spread for more focused flame
-                    const spread = 0.1;
+                    const spread = 0.08; // Reduced spread for a more focused beam
                     const spreadVec = new THREE.Vector3(
                         (Math.random() - 0.5) * spread,
                         (Math.random() - 0.5) * spread,
@@ -340,15 +343,15 @@ class Flamethrower extends HumanWeapon {
                     );
                     
                     // Base velocity in flame direction - increased speed for longer distance
-                    const speed = 10 + Math.random() * 5;
+                    const speed = 12 + Math.random() * 5; // Increased speed for more forward momentum
                     particle.velocity.copy(flameDirection).normalize().multiplyScalar(speed);
                     
                     // Add spread
                     particle.velocity.add(spreadVec);
                     
-                    // Set particle properties
-                    particle.size = 3 + Math.random() * 5; // Larger particles
-                    particle.maxLife = 1.2 + Math.random() * 0.5; // Longer lifetime for greater distance
+                    // Set particle properties - adjusted for better visual effect
+                    particle.size = 2 + Math.random() * 4; // Smaller starting particles
+                    particle.maxLife = 1.0 + Math.random() * 0.5; // Shorter lifetime for better performance
                     particle.life = particle.maxLife;
                     
                     // Assign random flame color

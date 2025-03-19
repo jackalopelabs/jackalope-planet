@@ -23,10 +23,18 @@ class InputManager {
         this.targetCameraAngleY = this.cameraAngleY;
         this.orbitSpeed = 0.005;
         
+        console.log('InputManager created');
         this.setupEventListeners();
     }
     
     setupEventListeners() {
+        if (!this.container) {
+            console.error('InputManager: container is null, cannot setup event listeners');
+            return;
+        }
+        
+        console.log('Setting up InputManager event listeners');
+        
         // Mouse controls
         this.container.addEventListener('mousedown', (event) => {
             this.handleMouseDown(event);
@@ -43,15 +51,25 @@ class InputManager {
         // Key press event listeners for movement and mode switching
         document.addEventListener('keydown', (event) => this.handleKey(event, true));
         document.addEventListener('keyup', (event) => this.handleKey(event, false));
+        
+        console.log('InputManager event listeners setup complete');
     }
     
     handleMouseDown(event) {
+        console.log('Mouse down in InputManager');
+        
         if (this.game.player) {
             this.game.player.handleMouseDown(event);
         }
         
         if (this.instructions) {
             this.instructions.style.display = 'none';
+            
+            // Initialize player controls when clicking on the game area
+            if (this.game.player) {
+                console.log('Initializing player controls from mouse down');
+                this.game.player.onInstructionsDismissed();
+            }
         }
         
         this.isMouseDown = true;
@@ -69,7 +87,7 @@ class InputManager {
         }
         
         // Update previous mouse position
-        if (this.instructions.style.display === 'none') {
+        if (this.instructions && this.instructions.style.display === 'none') {
             this.prevMouseX = event.clientX;
             this.prevMouseY = event.clientY;
         }
@@ -93,13 +111,16 @@ class InputManager {
             this.moveRight = pressed;
         } else if (key === 'KeyT' && pressed) {
             // Toggle between player modes (for testing purposes)
-            this.game.switchPlayerMode();
+            const newMode = this.game.switchPlayerMode();
+            console.log('Switched to player mode:', newMode);
         } else if (key === 'Escape' && pressed) {
             this.showInstructions();
         }
     }
     
     addInstructions(container) {
+        console.log('Adding instructions overlay');
+        
         const instructions = document.createElement('div');
         instructions.className = 'instructions';
         instructions.innerHTML = `
@@ -134,6 +155,7 @@ class InputManager {
         
         // Click to dismiss instructions
         instructions.addEventListener('click', () => {
+            console.log('Instructions clicked, hiding and initializing player');
             this.hideInstructions();
             if (this.game.player) {
                 this.game.player.onInstructionsDismissed();

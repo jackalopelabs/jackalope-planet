@@ -18,6 +18,7 @@ export class Game {
         this.player = null;
         this.inputManager = null;
         this.assetLoader = null;
+        this.container = null;
         
         // Game state
         this.gameMode = 'third_person'; // Will be determined/assigned for asymmetrical gameplay
@@ -32,32 +33,33 @@ export class Game {
             return;
         }
         
+        this.container = container;
         container.style.backgroundColor = '#050520';
         
         // Setup scene, camera, renderer
         this.setupRenderer(container);
         
-        // Initialize components
-        this.assetLoader = new AssetLoader();
-        this.inputManager = new InputManager(this, container);
-        this.world = new World(this.scene);
-        
-        // Create player based on game mode (will be assigned in real gameplay)
-        // For now, we'll allow toggling for testing purposes
-        this.createPlayer();
-        
-        // Add instructions overlay
-        this.inputManager.addInstructions(container);
-        
-        // Set up event listeners
-        window.addEventListener('resize', () => this.handleResize());
-        document.addEventListener('fullscreenchange', () => this.handleResize());
-        
-        // Ensure initial size is correct
-        this.handleResize();
-        
-        // Start animation loop
-        this.animate();
+        // Initialize asset loader first
+        try {
+            // Initialize asset loader and world
+            this.assetLoader = new AssetLoader();
+            this.world = new World(this.scene);
+            
+            // Setup input manager with instructions
+            this.setupInputManager(container);
+            
+            // Set up event listeners
+            window.addEventListener('resize', () => this.handleResize());
+            document.addEventListener('fullscreenchange', () => this.handleResize());
+            
+            // Ensure initial size is correct
+            this.handleResize();
+            
+            // Start animation loop
+            this.animate();
+        } catch (error) {
+            console.error('Error initializing game:', error);
+        }
     }
     
     setupRenderer(container) {
@@ -78,26 +80,63 @@ export class Game {
         container.appendChild(this.renderer.domElement);
     }
     
-    createPlayer() {
-        // For testing purposes, we'll start with the third-person mode (bunny)
-        if (this.gameMode === 'third_person') {
-            this.player = new BunnyPlayer(this);
-        } else {
-            this.player = new HumanPlayer(this);
-        }
+    setupInputManager(container) {
+        // Create input manager
+        this.inputManager = new InputManager(this, container);
+        
+        // Add instructions overlay
+        this.inputManager.addInstructions(container);
+        
+        // Create player only after input manager is fully set up
+        this.createPlayer();
     }
     
-    switchPlayerMode() {
-        // Remove current player from scene
+    createPlayer() {
+        // Clean up existing player if any
         if (this.player) {
             this.player.cleanup();
         }
         
-        // Toggle game mode
-        this.gameMode = this.gameMode === 'third_person' ? 'first_person' : 'third_person';
+        // Create player based on game mode
+        try {
+            if (this.gameMode === 'first_person') {
+                this.player = new HumanPlayer(this, {
+                    isFirstPerson: true,
+                    physics: { gravity: 9.8 },
+                    movement: { movementSpeed: 5 },
+                    controls: { sensitivity: 0.002, invertY: false }
+                });
+            } else {
+                this.player = new BunnyPlayer(this, {
+                    physics: { gravity: 7.5 },
+                    movement: { movementSpeed: 7 },
+                    controls: { sensitivity: 0.0025 }
+                });
+            }
+            
+            console.log('Player created:', this.gameMode);
+            
+            // Initialize controls immediately if instructions are not shown
+            if (this.inputManager && 
+                this.inputManager.instructions && 
+                this.inputManager.instructions.style.display === 'none') {
+                
+                console.log('Auto-initializing player controls');
+                this.player.onInstructionsDismissed();
+            }
+        } catch (error) {
+            console.error('Error creating player:', error);
+        }
+    }
+    
+    switchPlayerMode() {
+        // Toggle between game modes
+        this.gameMode = this.gameMode === 'first_person' ? 'third_person' : 'first_person';
         
-        // Create new player based on mode
+        // Recreate player with new mode
         this.createPlayer();
+        
+        return this.gameMode;
     }
     
     handleResize() {
@@ -132,5 +171,18 @@ export class Game {
         
         // Render the scene
         this.renderer.render(this.scene, this.camera);
+    }
+    
+    /**
+     * Set the active camera for rendering
+     * @param {THREE.Camera} camera - The camera to use for rendering
+     */
+    setActiveCamera(camera) {
+        if (camera) {
+            this.camera = camera;
+            // Update aspect ratio for the new camera
+            this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
+            this.camera.updateProjectionMatrix();
+        }
     }
 } 

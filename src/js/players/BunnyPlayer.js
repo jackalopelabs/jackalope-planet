@@ -1,16 +1,34 @@
 import * as THREE from 'three';
 import { Player } from './Player';
+import { BunnyPhysics } from './physics/BunnyPhysics';
+import { BunnyMovement } from './movement/BunnyMovement';
+import { BunnyControls } from './controls/BunnyControls';
 
 class BunnyPlayer extends Player {
-    constructor(game) {
-        super(game);
+    constructor(game, options = {}) {
+        super(game, {
+            eyeHeight: 0.8,
+            ...options
+        });
         
-        // Third-person specific properties
-        this.thirdPersonDistance = 5;
-        this.thirdPersonHeight = 2;
-        this.eyeHeight = 0.8;
+        // Third-person camera properties
+        this.thirdPersonDistance = options.thirdPersonDistance || 5;
+        this.thirdPersonHeight = options.thirdPersonHeight || 2;
         this.cameraTarget = new THREE.Vector3();
         
+        // Initialize components
+        this.setPhysics(new BunnyPhysics(options.physics || {}));
+        this.setMovement(new BunnyMovement(options.movement || {}));
+        this.setControls(new BunnyControls(options.controls || {}));
+        
+        // Setup camera zoom callback - ensure the method exists before calling
+        if (this.controls && typeof this.controls.setCameraZoomCallback === 'function') {
+            this.controls.setCameraZoomCallback(this.adjustCameraDistance.bind(this));
+        } else {
+            console.warn('BunnyPlayer: controls.setCameraZoomCallback is not available');
+        }
+        
+        // Initialize player
         this.init();
     }
     
@@ -26,130 +44,51 @@ class BunnyPlayer extends Player {
     }
     
     update(delta) {
-        const inputState = this.game.inputManager.getKeysState();
-        const orbitState = this.game.inputManager.getCameraOrbitState();
+        // Call the component-based update from parent class
+        super.update(delta);
         
-        // Smoothly update camera orbit angles
-        const cameraAngle = THREE.MathUtils.lerp(
-            orbitState.cameraAngle,
-            orbitState.targetCameraAngle,
-            0.1
-        );
-        
-        const cameraAngleY = THREE.MathUtils.lerp(
-            orbitState.cameraAngleY,
-            orbitState.targetCameraAngleY,
-            0.1
-        );
-        
-        // Update the input manager with the interpolated values
-        this.game.inputManager.updateCameraOrbit({
-            cameraAngle,
-            cameraAngleY
-        });
-        
-        // Get camera-relative movement directions
-        const forward = new THREE.Vector3(0, 0, -1);
-        forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngle);
-        forward.y = 0;
-        forward.normalize();
-        
-        const right = new THREE.Vector3(1, 0, 0);
-        right.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngle);
-        right.y = 0;
-        right.normalize();
-        
-        // Calculate movement vector
-        const movementVector = new THREE.Vector3();
-        let isMoving = false;
-        
-        if (inputState.w) {
-            movementVector.add(forward.clone().multiplyScalar(this.movementSpeed * delta));
-            isMoving = true;
-        }
-        if (inputState.s) {
-            movementVector.add(forward.clone().multiplyScalar(-this.movementSpeed * delta));
-            isMoving = true;
-        }
-        if (inputState.a) {
-            movementVector.add(right.clone().multiplyScalar(-this.movementSpeed * delta));
-            isMoving = true;
-        }
-        if (inputState.d) {
-            movementVector.add(right.clone().multiplyScalar(this.movementSpeed * delta));
-            isMoving = true;
-        }
-        
-        // Apply movement
-        if (isMoving) {
-            this.movePlayer(movementVector);
-            
-            // Set target direction to movement direction
-            this.targetDirection.copy(movementVector).normalize();
-        }
-        
-        // Rotate player to face movement direction
-        if (isMoving || this.direction.angleTo(this.targetDirection) > 0.01) {
-            this.rotateToDirection(this.targetDirection, delta);
-        }
-        
-        // Update camera position based on player position
+        // Update camera position
         this.updateCameraPosition();
     }
     
-    handleMouseMove(event, mouseState) {
-        const orbitState = this.game.inputManager.getCameraOrbitState();
-        let targetCameraAngle = orbitState.targetCameraAngle;
-        let targetCameraAngleY = orbitState.targetCameraAngleY;
+    /**
+     * Adjust camera distance when using mouse wheel
+     * @param {number} direction - Positive for zoom out, negative for zoom in
+     */
+    adjustCameraDistance(direction) {
+        // Adjust camera distance based on scroll direction
+        this.thirdPersonDistance += direction * 0.5;
         
-        // Only update camera orbit if instructions are hidden
-        if (this.game.inputManager.instructions.style.display === 'none') {
-            if (mouseState.prevMouseX === 0 && mouseState.prevMouseY === 0) {
-                // First movement after showing the game, just return
-                return;
-            }
-            
-            const deltaX = event.clientX - mouseState.prevMouseX;
-            const deltaY = event.clientY - mouseState.prevMouseY;
-            
-            // Adjust the orbital camera position based on mouse movement
-            const orbitSpeed = this.game.inputManager.orbitSpeed * 0.6;
-            
-            targetCameraAngle -= deltaX * orbitSpeed;
-            targetCameraAngleY = Math.max(
-                0.1,
-                Math.min(1.5, targetCameraAngleY + deltaY * orbitSpeed)
-            );
-            
-            // Update the target camera angles in the input manager
-            this.game.inputManager.updateCameraOrbit({
-                targetCameraAngle,
-                targetCameraAngleY
-            });
-        }
+        // Clamp to reasonable range
+        this.thirdPersonDistance = Math.max(2, Math.min(10, this.thirdPersonDistance));
     }
     
+    /**
+     * Update third-person camera position
+     */
     updateCameraPosition() {
-        const orbitState = this.game.inputManager.getCameraOrbitState();
+        if (!this.model) return;
         
-        // Calculate camera position based on angles (spherical coordinates)
-        const offset = new THREE.Vector3(
+        // Get orbit state from controls
+        const orbitState = this.controls ? this.controls.cameraOrbit : { cameraAngle: 0, cameraAngleY: 0 };
+        
+        // Calculate camera position based on orbit angles
+        const cameraOffset = new THREE.Vector3(
             Math.sin(orbitState.cameraAngle) * this.thirdPersonDistance,
-            this.thirdPersonHeight * orbitState.cameraAngleY,
+            this.thirdPersonHeight + Math.sin(orbitState.cameraAngleY) * this.thirdPersonDistance,
             Math.cos(orbitState.cameraAngle) * this.thirdPersonDistance
         );
         
-        // Position camera relative to player
-        this.camera.position.copy(this.position).add(offset);
+        // Set camera position
+        this.camera.position.copy(this.model.position).add(cameraOffset);
         
-        // Camera looks at player
-        this.cameraTarget.copy(this.position).add(new THREE.Vector3(0, 0.5, 0));
+        // Set camera target position (slightly above player model)
+        this.cameraTarget.copy(this.model.position).add(new THREE.Vector3(0, this.eyeHeight, 0));
         this.camera.lookAt(this.cameraTarget);
     }
     
     onInstructionsDismissed() {
-        // Reset camera orbit when instructions are dismissed
-        this.updateCameraPosition();
+        super.onInstructionsDismissed();
     }
 }
 

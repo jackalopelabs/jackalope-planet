@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import '../css/jackalope-planet.css';
 
 class JackalopeScene {
@@ -9,7 +8,6 @@ class JackalopeScene {
         this.camera = null;
         this.renderer = null;
         this.player = null;
-        this.controls = null;
         this.clock = new THREE.Clock();
         
         // Game mechanics
@@ -20,17 +18,25 @@ class JackalopeScene {
         this.thirdPersonDistance = 5;
         this.thirdPersonHeight = 2;
         
+        // Camera orbit properties
+        this.cameraAngle = Math.PI; // Initial angle (behind player)
+        this.cameraAngleY = 0.5; // Vertical angle (height)
+        this.targetCameraAngle = this.cameraAngle;
+        this.targetCameraAngleY = this.cameraAngleY;
+        this.orbitSpeed = 0.005;
+        this.isMouseDown = false;
+        this.prevMouseX = 0;
+        this.prevMouseY = 0;
+        
         // Movement directions
         this.moveForward = false;
         this.moveBackward = false;
         this.moveLeft = false;
         this.moveRight = false;
         
-        // Additional properties to fix vibration
+        // Player properties
         this.cameraTarget = new THREE.Vector3();
         this.playerDirection = new THREE.Vector3(0, 0, -1);
-        this.lastCameraForward = new THREE.Vector3(0, 0, -1);
-        this.isMovingBackward = false;
         
         this.init();
     }
@@ -68,9 +74,6 @@ class JackalopeScene {
         this.createPlayer(); // Create simple player model
         this.addStars();
         
-        // Setup controls
-        this.controls = new PointerLockControls(this.camera, this.renderer.domElement);
-        
         // Add instructions overlay
         this.addInstructions(container);
         
@@ -81,7 +84,7 @@ class JackalopeScene {
         window.addEventListener('resize', () => this.handleResize(container));
         
         // Start in third-person mode
-        this.switchToThirdPerson();
+        this.updateCameraPosition();
         
         // Start animation
         this.animate();
@@ -95,7 +98,7 @@ class JackalopeScene {
                 <h2>Game Controls</h2>
                 <p>Click to play</p>
                 <p>W, A, S, D to move</p>
-                <p>Mouse to look around</p>
+                <p>Hold and drag mouse to orbit camera</p>
                 <p>Press T to toggle between modes</p>
                 <p>Press ESC to exit game mode</p>
             </div>
@@ -121,23 +124,41 @@ class JackalopeScene {
     }
     
     setupEventListeners(container) {
-        // Handle pointer lock for first-person and third-person modes
-        this.instructions.addEventListener('click', () => {
-            this.controls.lock();
-        });
-        
-        this.controls.addEventListener('lock', () => {
+        // Mouse controls for orbiting
+        container.addEventListener('mousedown', (event) => {
+            this.isMouseDown = true;
+            this.prevMouseX = event.clientX;
+            this.prevMouseY = event.clientY;
             this.instructions.style.display = 'none';
         });
         
-        this.controls.addEventListener('unlock', () => {
-            this.instructions.style.display = 'flex';
+        document.addEventListener('mousemove', (event) => {
+            if (this.isMouseDown && this.mode === 'third_person') {
+                const deltaX = event.clientX - this.prevMouseX;
+                const deltaY = event.clientY - this.prevMouseY;
+                
+                this.targetCameraAngle -= deltaX * this.orbitSpeed;
+                this.targetCameraAngleY = Math.max(
+                    0.1,
+                    Math.min(1.5, this.targetCameraAngleY - deltaY * this.orbitSpeed)
+                );
+                
+                this.prevMouseX = event.clientX;
+                this.prevMouseY = event.clientY;
+            }
         });
         
-        // Keyboard controls for movement and mode switching
+        document.addEventListener('mouseup', () => {
+            this.isMouseDown = false;
+        });
+        
+        // Click to dismiss instructions
+        this.instructions.addEventListener('click', () => {
+            this.instructions.style.display = 'none';
+        });
+        
+        // Key press event listeners for movement and mode switching
         const handleKey = (event) => {
-            if (!this.controls.isLocked) return;
-            
             const key = event.code;
             const pressed = event.type === 'keydown';
             
@@ -159,6 +180,8 @@ class JackalopeScene {
                 } else if (this.mode === 'third_person') {
                     this.switchToFirstPerson();
                 }
+            } else if (key === 'Escape') {
+                this.instructions.style.display = 'flex';
             }
         };
         
@@ -250,38 +273,51 @@ class JackalopeScene {
     
     switchToFirstPerson() {
         // Position camera at eye level of the player
+        this.mode = 'first_person';
         const eyeHeightVector = new THREE.Vector3(0, this.eyeHeight, 0);
         this.camera.position.copy(this.player.position).add(eyeHeightVector);
         
-        // Get current direction
+        // Get the direction the player is facing
         const direction = new THREE.Vector3(0, 0, -1);
         direction.applyQuaternion(this.player.quaternion);
         
-        // Update controls rotation to match player's
-        this.controls.getObject().position.copy(this.camera.position);
-        
-        // Set the mode to first-person
-        this.mode = 'first_person';
+        // Look in that direction
+        const lookTarget = this.player.position.clone().add(direction);
+        this.camera.lookAt(lookTarget);
     }
     
     switchToThirdPerson() {
-        // Calculate camera position behind the player
-        const direction = new THREE.Vector3(0, 0, 1); // Behind the player
-        direction.applyQuaternion(this.player.quaternion);
-        direction.multiplyScalar(this.thirdPersonDistance);
+        this.mode = 'third_person';
+        this.updateCameraPosition();
+    }
+    
+    updateCameraPosition() {
+        // Smoothly interpolate camera angles
+        this.cameraAngle = THREE.MathUtils.lerp(
+            this.cameraAngle,
+            this.targetCameraAngle,
+            0.1
+        );
         
-        // Add height offset
-        direction.y += this.thirdPersonHeight;
+        this.cameraAngleY = THREE.MathUtils.lerp(
+            this.cameraAngleY,
+            this.targetCameraAngleY,
+            0.1
+        );
         
-        // Set camera position
-        this.camera.position.copy(this.player.position).add(direction);
+        // Calculate camera position based on angles (spherical coordinates)
+        const offset = new THREE.Vector3(
+            Math.sin(this.cameraAngle) * this.thirdPersonDistance,
+            this.thirdPersonHeight * this.cameraAngleY,
+            Math.cos(this.cameraAngle) * this.thirdPersonDistance
+        );
         
-        // Look at player
+        // Position camera relative to player
+        this.camera.position.copy(this.player.position).add(offset);
+        
+        // Camera looks at player
         this.cameraTarget.copy(this.player.position).add(new THREE.Vector3(0, 0.5, 0));
         this.camera.lookAt(this.cameraTarget);
-        
-        // Set the mode to third-person
-        this.mode = 'third_person';
     }
     
     animate() {
@@ -292,134 +328,85 @@ class JackalopeScene {
         const delta = this.clock.getDelta();
         
         if (this.mode === 'first_person') {
-            // First-person mode controls - Manual movement implementation
-            const controlObject = this.controls.getObject();
-            const velocity = new THREE.Vector3();
-            const direction = new THREE.Vector3();
+            // First-person mode
+            const eyeHeightVector = new THREE.Vector3(0, this.eyeHeight, 0);
+            this.camera.position.copy(this.player.position).add(eyeHeightVector);
             
-            // Calculate velocity based on keys
-            direction.z = Number(this.moveForward) - Number(this.moveBackward);
-            direction.x = Number(this.moveLeft) - Number(this.moveRight); // Fixed inverted controls
-            direction.normalize();
-            
-            if (this.moveForward || this.moveBackward) {
-                velocity.z -= direction.z * this.movementSpeed * delta;
-            }
-            if (this.moveLeft || this.moveRight) {
-                velocity.x -= direction.x * this.movementSpeed * delta;
-            }
-            
-            // Move the camera
-            controlObject.translateX(velocity.x);
-            controlObject.translateZ(velocity.z);
-            
-            // Update player position to follow camera
-            const cameraPosition = controlObject.position;
-            this.player.position.x = cameraPosition.x;
-            this.player.position.z = cameraPosition.z;
-            
-            // Keep player on the ground
-            this.player.position.y = 0.5; // Half height above ground
-            controlObject.position.y = this.player.position.y + this.eyeHeight;
-            
-            // Update player rotation to match camera yaw (only Y rotation)
+            // Get camera's forward direction
             const cameraDirection = new THREE.Vector3(0, 0, -1);
             cameraDirection.applyQuaternion(this.camera.quaternion);
             cameraDirection.y = 0; // Keep on xz plane
             cameraDirection.normalize();
             
-            // Set player rotation
-            if (cameraDirection.length() > 0.001) {
-                this.player.lookAt(this.player.position.clone().add(cameraDirection));
-            }
-        } else if (this.mode === 'third_person') {
-            // Get camera's forward direction (projected onto XZ plane)
-            const cameraForward = new THREE.Vector3();
-            this.camera.getWorldDirection(cameraForward);
-            cameraForward.y = 0; // Keep movement on ground plane
-            cameraForward.normalize();
-            
-            // Store the camera's forward direction for stability if this is the first frame
-            if (!this.lastCameraForward) {
-                this.lastCameraForward = cameraForward.clone();
-            }
-            
-            // Get camera's right direction - correctly calculated for intuitive controls
-            const cameraRight = new THREE.Vector3();
-            cameraRight.crossVectors(cameraForward, new THREE.Vector3(0, 1, 0)).normalize();
-            
-            // Calculate movement vector based on camera orientation
+            // Move player based on input
             const movementVector = new THREE.Vector3();
-            let isMovingForward = false;
-            const wasMovingBackward = this.isMovingBackward;
-            this.isMovingBackward = false;
-            let isStrafing = false;
             
-            if (this.keys.w) {
-                movementVector.add(cameraForward.clone().multiplyScalar(this.movementSpeed * delta));
-                isMovingForward = true;
-            }
-            if (this.keys.s) {
-                movementVector.add(cameraForward.clone().multiplyScalar(-this.movementSpeed * delta));
-                this.isMovingBackward = true;
-            }
-            if (this.keys.a) {
-                movementVector.add(cameraRight.clone().multiplyScalar(-this.movementSpeed * delta));
-                isStrafing = true;
-            }
-            if (this.keys.d) {
-                movementVector.add(cameraRight.clone().multiplyScalar(this.movementSpeed * delta));
-                isStrafing = true;
-            }
+            if (this.keys.w) movementVector.z -= this.movementSpeed * delta;
+            if (this.keys.s) movementVector.z += this.movementSpeed * delta;
+            if (this.keys.a) movementVector.x -= this.movementSpeed * delta;
+            if (this.keys.d) movementVector.x += this.movementSpeed * delta;
             
-            // Apply movement to player
-            const isMoving = movementVector.lengthSq() > 0.0001;
-            if (isMoving) {
+            if (movementVector.length() > 0.001) {
+                // Apply movement relative to camera orientation
+                movementVector.applyQuaternion(this.camera.quaternion);
+                movementVector.y = 0; // Keep on ground
+                
+                // Update player position
                 this.player.position.add(movementVector);
                 
-                // Determine target direction for player to face
-                let targetDirection;
-                
-                if (isMovingForward) {
-                    // Moving forward takes priority - always face forward 
-                    targetDirection = cameraForward.clone();
-                    
-                    // Store this direction for later when we need backward facing
-                    this.lastCameraForward.copy(cameraForward);
-                } 
-                else if (this.isMovingBackward && !isStrafing) {
-                    // Moving backward - face backward (away from camera)
-                    // Use the last known forward direction to prevent flipping
-                    targetDirection = this.lastCameraForward.clone().negate();
-                }
-                
-                // Only update rotation if we have a target direction and aren't only strafing
-                if (targetDirection && (!isStrafing || isMovingForward || this.isMovingBackward)) {
-                    // Slower lerp for backward movement to prevent oscillation
-                    const lerpFactor = this.isMovingBackward ? 0.03 : 0.1;
-                    
-                    // Apply smooth rotation
-                    this.playerDirection.lerp(targetDirection, lerpFactor);
+                // Make player face movement direction
+                if (movementVector.length() > 0.001) {
+                    this.playerDirection.copy(movementVector).normalize();
                     const lookTarget = this.player.position.clone().add(this.playerDirection);
                     this.player.lookAt(lookTarget);
                 }
             }
+        } else if (this.mode === 'third_person') {
+            // Update camera position based on current orbit angles
+            this.updateCameraPosition();
             
-            // Camera follows player - position always based on player's facing direction, not movement
-            const cameraOffset = new THREE.Vector3();
+            // Get world directions for movement
+            const forward = new THREE.Vector3(0, 0, -1);
+            forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraAngle);
+            forward.y = 0;
+            forward.normalize();
             
-            // Make camera position opposite to player facing direction
-            cameraOffset.copy(this.playerDirection).negate().multiplyScalar(this.thirdPersonDistance);
-            cameraOffset.y = this.thirdPersonHeight;
+            const right = new THREE.Vector3(1, 0, 0);
+            right.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraAngle);
+            right.y = 0;
+            right.normalize();
             
-            const targetCameraPosition = this.player.position.clone().add(cameraOffset);
+            // Calculate movement vector
+            const movementVector = new THREE.Vector3();
+            let isMoving = false;
             
-            // Very smooth camera movement to prevent jitter
-            this.camera.position.lerp(targetCameraPosition, 0.05);
+            if (this.keys.w) {
+                movementVector.add(forward.clone().multiplyScalar(this.movementSpeed * delta));
+                isMoving = true;
+            }
+            if (this.keys.s) {
+                movementVector.add(forward.clone().multiplyScalar(-this.movementSpeed * delta));
+                isMoving = true;
+            }
+            if (this.keys.a) {
+                movementVector.add(right.clone().multiplyScalar(-this.movementSpeed * delta));
+                isMoving = true;
+            }
+            if (this.keys.d) {
+                movementVector.add(right.clone().multiplyScalar(this.movementSpeed * delta));
+                isMoving = true;
+            }
             
-            // Camera always looks at player 
-            this.cameraTarget.copy(this.player.position).add(new THREE.Vector3(0, 0.5, 0));
-            this.camera.lookAt(this.cameraTarget);
+            // Apply movement
+            if (isMoving) {
+                // Update player position
+                this.player.position.add(movementVector);
+                
+                // Make player face movement direction
+                this.playerDirection.copy(movementVector).normalize();
+                const lookTarget = this.player.position.clone().add(this.playerDirection);
+                this.player.lookAt(lookTarget);
+            }
         }
         
         // Render the scene

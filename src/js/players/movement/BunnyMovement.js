@@ -13,10 +13,6 @@ class BunnyMovement extends BaseMovement {
             ...options
         });
         
-        // Bunny-specific movement properties
-        this.hopAmplitude = options.hopAmplitude || 0.1;
-        this.hopFrequency = options.hopFrequency || 8;
-        this.hopTime = 0;
         this.lastDirection = new THREE.Vector3();
         this.moveBuffer = new THREE.Vector3();
     }
@@ -66,7 +62,7 @@ class BunnyMovement extends BaseMovement {
             isMoving = true;
         }
         
-        // Apply movement with hop animation when moving
+        // Apply movement
         if (isMoving) {
             // Create a copy for movement (without Y component)
             const groundMovement = new THREE.Vector3(
@@ -88,15 +84,9 @@ class BunnyMovement extends BaseMovement {
                 this.acceleration * delta
             );
             
-            // Apply hopping motion when moving on ground - only for visual effect
-            if (player.isGrounded) {
-                this.hopTime += delta * this.hopFrequency;
-                const hopOffset = Math.abs(Math.sin(this.hopTime)) * this.hopAmplitude;
-                // Only apply hop to visual position, not to physics
-                if (player.model) {
-                    // Only apply small visual hop
-                    player.model.position.y = Math.max(0.5, player.model.position.y) + hopOffset;
-                }
+            // Make sure the model's position is always aligned with player position
+            if (player.model) {
+                player.model.position.y = Math.max(0.5, player.position.y);
             }
             
             // Use a clean vector for movement (without affecting Y)
@@ -128,6 +118,11 @@ class BunnyMovement extends BaseMovement {
                     this.moveBuffer.z
                 );
                 this.move(player, decelerationMovement);
+            }
+            
+            // Ensure model position is aligned
+            if (player.model) {
+                player.model.position.y = Math.max(0.5, player.position.y);
             }
         }
         

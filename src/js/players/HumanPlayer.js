@@ -68,6 +68,15 @@ class HumanPlayer extends Player {
         // Create human model
         this.model = this.game.assetLoader.createHumanModel();
         this.model.position.set(0, 1.0, 0); // Full height above ground
+        
+        // Enable shadows for the human model
+        this.model.traverse(node => {
+            if (node instanceof THREE.Mesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        
         this.scene.add(this.model);
         this.position.copy(this.model.position);
         

@@ -79,6 +79,11 @@ export class Game {
         
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(container.clientWidth, container.clientHeight);
+        
+        // Enable shadow maps for the renderer
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
+        
         container.appendChild(this.renderer.domElement);
     }
     

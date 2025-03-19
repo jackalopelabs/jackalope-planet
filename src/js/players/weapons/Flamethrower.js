@@ -100,6 +100,8 @@ class Flamethrower extends HumanWeapon {
         const tank = new THREE.Mesh(tankGeometry, tankMaterial);
         tank.rotation.x = Math.PI / 2; // Lay horizontally
         tank.position.set(0.3, -0.15, 0.4);
+        tank.castShadow = true;
+        tank.receiveShadow = true;
         group.add(tank);
         
         // Nozzle (cone)
@@ -112,6 +114,8 @@ class Flamethrower extends HumanWeapon {
         const nozzle = new THREE.Mesh(nozzleGeometry, nozzleMaterial);
         nozzle.position.set(0.3, -0.15, 0.7); // In front of the tank
         nozzle.rotation.x = Math.PI / 2; // Point forward
+        nozzle.castShadow = true;
+        nozzle.receiveShadow = true;
         group.add(nozzle);
         
         // Store the nozzle tip position - this is the most important change

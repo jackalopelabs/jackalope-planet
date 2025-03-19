@@ -36,6 +36,15 @@ class BunnyPlayer extends Player {
         // Create bunny model
         this.model = this.game.assetLoader.createBunnyModel();
         this.model.position.set(0, 0.5, 0); // Half height above ground
+        
+        // Enable shadows for the bunny model
+        this.model.traverse(node => {
+            if (node instanceof THREE.Mesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+        
         this.scene.add(this.model);
         this.position.copy(this.model.position);
         

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import '../css/jackalope-planet.css';
 
 class JackalopeScene {
@@ -8,6 +9,7 @@ class JackalopeScene {
         this.camera = null;
         this.renderer = null;
         this.player = null;
+        this.controls = null; // Pointer lock controls for first-person mode
         this.clock = new THREE.Clock();
         
         // Game mechanics
@@ -74,6 +76,9 @@ class JackalopeScene {
         this.createPlayer(); // Create simple player model
         this.addStars();
         
+        // Setup pointer lock controls for first-person mode
+        this.controls = new PointerLockControls(this.camera, this.renderer.domElement);
+        
         // Add instructions overlay
         this.addInstructions(container);
         
@@ -98,7 +103,8 @@ class JackalopeScene {
                 <h2>Game Controls</h2>
                 <p>Click to play</p>
                 <p>W, A, S, D to move</p>
-                <p>Hold and drag mouse to orbit camera</p>
+                <p>In third-person: Hold and drag mouse to orbit camera</p>
+                <p>In first-person: Mouse to look around</p>
                 <p>Press T to toggle between modes</p>
                 <p>Press ESC to exit game mode</p>
             </div>
@@ -124,12 +130,16 @@ class JackalopeScene {
     }
     
     setupEventListeners(container) {
-        // Mouse controls for orbiting
+        // Mouse controls for orbiting in third-person and pointer lock in first-person
         container.addEventListener('mousedown', (event) => {
-            this.isMouseDown = true;
-            this.prevMouseX = event.clientX;
-            this.prevMouseY = event.clientY;
-            this.instructions.style.display = 'none';
+            if (this.mode === 'third_person') {
+                this.isMouseDown = true;
+                this.prevMouseX = event.clientX;
+                this.prevMouseY = event.clientY;
+                this.instructions.style.display = 'none';
+            } else if (this.mode === 'first_person') {
+                this.controls.lock();
+            }
         });
         
         document.addEventListener('mousemove', (event) => {
@@ -152,9 +162,23 @@ class JackalopeScene {
             this.isMouseDown = false;
         });
         
-        // Click to dismiss instructions
+        // Click to dismiss instructions or lock pointer
         this.instructions.addEventListener('click', () => {
             this.instructions.style.display = 'none';
+            if (this.mode === 'first_person') {
+                this.controls.lock();
+            }
+        });
+        
+        // Pointer lock event listeners
+        this.controls.addEventListener('lock', () => {
+            this.instructions.style.display = 'none';
+        });
+        
+        this.controls.addEventListener('unlock', () => {
+            if (this.mode === 'first_person') {
+                this.instructions.style.display = 'flex';
+            }
         });
         
         // Key press event listeners for movement and mode switching
@@ -181,7 +205,9 @@ class JackalopeScene {
                     this.switchToFirstPerson();
                 }
             } else if (key === 'Escape') {
-                this.instructions.style.display = 'flex';
+                if (this.mode === 'third_person') {
+                    this.instructions.style.display = 'flex';
+                }
             }
         };
         
@@ -272,8 +298,9 @@ class JackalopeScene {
     }
     
     switchToFirstPerson() {
-        // Position camera at eye level of the player
         this.mode = 'first_person';
+        
+        // Position camera at eye level of the player
         const eyeHeightVector = new THREE.Vector3(0, this.eyeHeight, 0);
         this.camera.position.copy(this.player.position).add(eyeHeightVector);
         
@@ -281,13 +308,18 @@ class JackalopeScene {
         const direction = new THREE.Vector3(0, 0, -1);
         direction.applyQuaternion(this.player.quaternion);
         
-        // Look in that direction
-        const lookTarget = this.player.position.clone().add(direction);
-        this.camera.lookAt(lookTarget);
+        // Update controls position 
+        this.controls.getObject().position.copy(this.camera.position);
     }
     
     switchToThirdPerson() {
         this.mode = 'third_person';
+        
+        // If we were in pointer lock, exit it when switching to third-person
+        if (this.controls.isLocked) {
+            this.controls.unlock();
+        }
+        
         this.updateCameraPosition();
     }
     
@@ -328,37 +360,47 @@ class JackalopeScene {
         const delta = this.clock.getDelta();
         
         if (this.mode === 'first_person') {
-            // First-person mode
-            const eyeHeightVector = new THREE.Vector3(0, this.eyeHeight, 0);
-            this.camera.position.copy(this.player.position).add(eyeHeightVector);
-            
-            // Get camera's forward direction
-            const cameraDirection = new THREE.Vector3(0, 0, -1);
-            cameraDirection.applyQuaternion(this.camera.quaternion);
-            cameraDirection.y = 0; // Keep on xz plane
-            cameraDirection.normalize();
-            
-            // Move player based on input
-            const movementVector = new THREE.Vector3();
-            
-            if (this.keys.w) movementVector.z -= this.movementSpeed * delta;
-            if (this.keys.s) movementVector.z += this.movementSpeed * delta;
-            if (this.keys.a) movementVector.x -= this.movementSpeed * delta;
-            if (this.keys.d) movementVector.x += this.movementSpeed * delta;
-            
-            if (movementVector.length() > 0.001) {
-                // Apply movement relative to camera orientation
-                movementVector.applyQuaternion(this.camera.quaternion);
-                movementVector.y = 0; // Keep on ground
+            // First-person mode with pointer lock controls
+            if (this.controls.isLocked) {
+                const controlObject = this.controls.getObject();
+                const velocity = new THREE.Vector3();
+                const direction = new THREE.Vector3();
                 
-                // Update player position
-                this.player.position.add(movementVector);
+                // Calculate velocity based on keys
+                direction.z = Number(this.moveForward) - Number(this.moveBackward);
+                direction.x = Number(this.moveLeft) - Number(this.moveRight);
+                direction.normalize();
                 
-                // Make player face movement direction
-                if (movementVector.length() > 0.001) {
-                    this.playerDirection.copy(movementVector).normalize();
-                    const lookTarget = this.player.position.clone().add(this.playerDirection);
-                    this.player.lookAt(lookTarget);
+                if (this.moveForward || this.moveBackward) {
+                    velocity.z -= direction.z * this.movementSpeed * delta;
+                }
+                if (this.moveLeft || this.moveRight) {
+                    velocity.x -= direction.x * this.movementSpeed * delta;
+                }
+                
+                // Move the camera
+                controlObject.translateX(velocity.x);
+                controlObject.translateZ(velocity.z);
+                
+                // Update player position to follow camera
+                const cameraPosition = controlObject.position;
+                this.player.position.x = cameraPosition.x;
+                this.player.position.z = cameraPosition.z;
+                
+                // Keep player on the ground
+                this.player.position.y = 0.5; // Half height above ground
+                controlObject.position.y = this.player.position.y + this.eyeHeight;
+                
+                // Update player rotation to match camera yaw (only Y rotation)
+                const cameraDirection = new THREE.Vector3(0, 0, -1);
+                cameraDirection.applyQuaternion(this.camera.quaternion);
+                cameraDirection.y = 0; // Keep on xz plane
+                cameraDirection.normalize();
+                
+                // Set player rotation
+                if (cameraDirection.length() > 0.001) {
+                    this.player.lookAt(this.player.position.clone().add(cameraDirection));
+                    this.playerDirection.copy(cameraDirection);
                 }
             }
         } else if (this.mode === 'third_person') {

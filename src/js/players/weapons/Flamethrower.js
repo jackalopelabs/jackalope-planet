@@ -56,8 +56,9 @@ class Flamethrower extends HumanWeapon {
     
     // Add a debug sphere to visualize emitter position
     debugSphere() {
-        const sphereGeometry = new THREE.SphereGeometry(0.1, 16, 16);
-        const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        // Create a brighter, more visible debug sphere at the nozzle tip
+        const sphereGeometry = new THREE.SphereGeometry(0.05, 16, 16); // Larger sphere
+        const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.8 });
         this.debugEmitter = new THREE.Mesh(sphereGeometry, sphereMaterial);
         
         // Position at the nozzle tip - use the stored nozzle tip position
@@ -67,13 +68,27 @@ class Flamethrower extends HumanWeapon {
             this.model.add(this.debugEmitter);
         }
         
-        // Add a simple line showing the direction - extended to show longer range
+        // Add a second emitter in a different color to verify camera/model position
+        const refSphereGeometry = new THREE.SphereGeometry(0.04, 8, 8);
+        const refSphereMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 });
+        this.refEmitter = new THREE.Mesh(refSphereGeometry, refSphereMaterial);
+        this.refEmitter.position.set(0, 0, 0); // At the model origin
+        
+        if (this.model) {
+            this.model.add(this.refEmitter);
+        }
+        
+        // Add a direction line showing the fire direction - extended to show longer range
         const lineGeometry = new THREE.BufferGeometry();
-        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
         
         const points = [
             this.nozzleTipPosition.clone(),
-            new THREE.Vector3(this.nozzleTipPosition.x, this.nozzleTipPosition.y, this.nozzleTipPosition.z + 5.0)  // Extended forward
+            new THREE.Vector3(
+                this.nozzleTipPosition.x, 
+                this.nozzleTipPosition.y, 
+                this.nozzleTipPosition.z + 5.0
+            )  // Extended forward
         ];
         
         lineGeometry.setFromPoints(points);
@@ -118,11 +133,26 @@ class Flamethrower extends HumanWeapon {
         nozzle.receiveShadow = true;
         group.add(nozzle);
         
-        // Store the nozzle tip position - this is the most important change
-        // Calculate the tip position from the nozzle position and dimensions
-        this.nozzleTipPosition = new THREE.Vector3(0.3, -0.15, 0.8); // Offset from nozzle position to get to the tip
+        // Store the nozzle tip position in local space of the weapon model
+        // More precise calculation of the tip position by using nozzle dimensions
+        this.nozzleTipPosition = new THREE.Vector3(
+            nozzle.position.x,           // Same x as nozzle
+            nozzle.position.y,           // Same y as nozzle
+            nozzle.position.z + 0.12     // Slightly in front of nozzle (half of nozzle length + small offset)
+        );
         
-        // Position for FPS view
+        // Add a visual marker at the nozzle tip (only visible in debug mode)
+        if (this.debug) {
+            const tipMarker = new THREE.Mesh(
+                new THREE.SphereGeometry(0.02, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+            );
+            tipMarker.position.copy(this.nozzleTipPosition);
+            group.add(tipMarker);
+        }
+        
+        // Position for FPS view - adjust based on first-person camera perspective
+        // Position to be visible in first-person view but not too obtrusive
         group.position.set(0.3, -0.4, -0.5); // Right side, below center, forward
         
         this.model = group;
@@ -275,39 +305,50 @@ class Flamethrower extends HumanWeapon {
         
         try {
             if (this.player.isFirstPerson && this.player.fpCamera) {
-                // Get the camera's position and direction
-                this.player.fpCamera.getWorldPosition(flameOrigin);
+                // First-person mode - use model position in world space
+                
+                // Get world transform of the model
+                if (!this.model) {
+                    console.warn('Model not available for first-person weapon');
+                    return;
+                }
+                
+                // Ensure matrices are up to date
+                this.model.updateMatrixWorld(true);
+                
+                // Create a temporary vector for nozzle tip position
+                const nozzleTipWorld = new THREE.Vector3();
+                
+                // Convert the local nozzle tip position to world coordinates
+                nozzleTipWorld.copy(this.nozzleTipPosition).applyMatrix4(this.model.matrixWorld);
+                
+                // Set the flame origin to the world position of the nozzle tip
+                flameOrigin.copy(nozzleTipWorld);
+                
+                // Get camera direction for the flame direction
                 this.player.fpCamera.getWorldDirection(flameDirection);
-                
-                // Use the nozzle tip position as the offset
-                const nozzleOffset = this.nozzleTipPosition.clone();
-                
-                // Calculate world space offset by using camera's local-to-world transformation
-                const localToWorld = new THREE.Matrix4();
-                this.player.fpCamera.updateMatrixWorld(true);
-                localToWorld.makeRotationFromQuaternion(this.player.fpCamera.quaternion);
-                
-                // Apply the rotation to the offset
-                const worldOffset = nozzleOffset.clone().applyMatrix4(localToWorld);
-                
-                // Add the rotated offset to the camera position
-                flameOrigin.add(worldOffset);
                 
                 // Log position for debugging
                 if (this.debug) {
-                    console.log('Nozzle world position:', flameOrigin.clone());
-                    console.log('Flame direction:', flameDirection.clone());
+                    console.log('FP Nozzle world position:', flameOrigin.clone());
+                    console.log('FP Flame direction:', flameDirection.clone());
                 }
             } else if (this.player.model) {
-                // Same process for third-person
+                // Third-person mode
+                
                 if (this.model) {
-                    const worldMatrix = new THREE.Matrix4();
+                    // Ensure matrices are up to date
                     this.model.updateMatrixWorld(true);
-                    worldMatrix.copy(this.model.matrixWorld);
                     
-                    // Use the actual nozzle tip position instead of a magic number
-                    const worldPos = this.nozzleTipPosition.clone().applyMatrix4(worldMatrix);
-                    flameOrigin.copy(worldPos);
+                    // Convert the local nozzle tip position to world coordinates
+                    const nozzleTipWorld = new THREE.Vector3();
+                    nozzleTipWorld.copy(this.nozzleTipPosition).applyMatrix4(this.model.matrixWorld);
+                    
+                    // Set the flame origin
+                    flameOrigin.copy(nozzleTipWorld);
+                } else {
+                    console.warn('Model not available for third-person weapon');
+                    return;
                 }
                 
                 // Get forward direction from model
@@ -546,6 +587,16 @@ class Flamethrower extends HumanWeapon {
             this.debugEmitter.geometry.dispose();
             this.debugEmitter.material.dispose();
             this.debugEmitter = null;
+        }
+        
+        // Clean up reference emitter
+        if (this.refEmitter) {
+            if (this.refEmitter.parent) {
+                this.refEmitter.parent.remove(this.refEmitter);
+            }
+            this.refEmitter.geometry.dispose();
+            this.refEmitter.material.dispose();
+            this.refEmitter = null;
         }
         
         if (this.debugLine) {

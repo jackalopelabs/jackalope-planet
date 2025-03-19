@@ -102,7 +102,7 @@ class BunnyControls extends BaseControls {
             
             // Update orbit angles
             this.cameraOrbit.targetCameraAngle -= deltaX;
-            this.cameraOrbit.targetCameraAngleY -= deltaY;
+            this.cameraOrbit.targetCameraAngleY += deltaY;
             
             // Clamp vertical angle to prevent over-rotation
             this.cameraOrbit.targetCameraAngleY = Math.max(

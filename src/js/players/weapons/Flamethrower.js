@@ -60,20 +60,20 @@ class Flamethrower extends HumanWeapon {
         const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
         this.debugEmitter = new THREE.Mesh(sphereGeometry, sphereMaterial);
         
-        // Position at the nozzle
-        this.debugEmitter.position.set(0.3, -0.15, 0.7);
+        // Position at the nozzle - updated to match new emission point
+        this.debugEmitter.position.set(0.3, -0.15, 1.5);
         
         if (this.model) {
             this.model.add(this.debugEmitter);
         }
         
-        // Add a simple line showing the direction
+        // Add a simple line showing the direction - extended to show longer range
         const lineGeometry = new THREE.BufferGeometry();
         const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00 });
         
         const points = [
-            new THREE.Vector3(0.3, -0.15, 0.7),
-            new THREE.Vector3(0.3, -0.15, 1.5)
+            new THREE.Vector3(0.3, -0.15, 1.5),
+            new THREE.Vector3(0.3, -0.15, 5.0)  // Extended forward
         ];
         
         lineGeometry.setFromPoints(points);
@@ -267,36 +267,32 @@ class Flamethrower extends HumanWeapon {
         
         try {
             if (this.player.isFirstPerson && this.player.fpCamera) {
-                // Get nozzle position - use local coordinates relative to the model
-                const nozzlePosition = new THREE.Vector3(0.3, -0.15, 0.7);
-                
-                // Convert to world space
-                if (this.model) {
-                    // Create a world matrix from the model
-                    const worldMatrix = new THREE.Matrix4();
-                    this.model.updateMatrixWorld(true);
-                    worldMatrix.copy(this.model.matrixWorld);
-                    
-                    // Apply the transformation
-                    const worldPos = nozzlePosition.clone().applyMatrix4(worldMatrix);
-                    flameOrigin.copy(worldPos);
-                    
-                    // Log position for debugging
-                    if (this.debug) {
-                        console.log('Nozzle world position:', worldPos);
-                    }
-                }
-                
-                // Get forward direction based on camera
+                // Get the camera's position and direction
+                this.player.fpCamera.getWorldPosition(flameOrigin);
                 this.player.fpCamera.getWorldDirection(flameDirection);
                 
-                // Log direction for debugging
+                // Create a proper offset vector in front of the camera for the nozzle
+                const nozzleOffset = new THREE.Vector3(0.3, -0.15, 1.5);
+                
+                // Calculate world space offset by using camera's local-to-world transformation
+                const localToWorld = new THREE.Matrix4();
+                this.player.fpCamera.updateMatrixWorld(true);
+                localToWorld.makeRotationFromQuaternion(this.player.fpCamera.quaternion);
+                
+                // Apply the rotation to the offset
+                const worldOffset = nozzleOffset.clone().applyMatrix4(localToWorld);
+                
+                // Add the rotated offset to the camera position
+                flameOrigin.add(worldOffset);
+                
+                // Log position for debugging
                 if (this.debug) {
-                    console.log('Flame direction:', flameDirection);
+                    console.log('Nozzle world position:', flameOrigin.clone());
+                    console.log('Flame direction:', flameDirection.clone());
                 }
             } else if (this.player.model) {
                 // Same process for third-person
-                const nozzlePosition = new THREE.Vector3(0.3, -0.15, 0.7);
+                const nozzlePosition = new THREE.Vector3(0.3, -0.15, 1.7);
                 
                 if (this.model) {
                     const worldMatrix = new THREE.Matrix4();
@@ -335,16 +331,16 @@ class Flamethrower extends HumanWeapon {
                     // Reset particle
                     particle.position.copy(flameOrigin);
                     
-                    // Calculate random spread 
-                    const spread = 0.2;
+                    // Calculate random spread - reduced spread for more focused flame
+                    const spread = 0.1;
                     const spreadVec = new THREE.Vector3(
                         (Math.random() - 0.5) * spread,
                         (Math.random() - 0.5) * spread,
                         (Math.random() - 0.5) * spread
                     );
                     
-                    // Base velocity in flame direction
-                    const speed = 5 + Math.random() * 5;
+                    // Base velocity in flame direction - increased speed for longer distance
+                    const speed = 10 + Math.random() * 5;
                     particle.velocity.copy(flameDirection).normalize().multiplyScalar(speed);
                     
                     // Add spread
@@ -352,7 +348,7 @@ class Flamethrower extends HumanWeapon {
                     
                     // Set particle properties
                     particle.size = 3 + Math.random() * 5; // Larger particles
-                    particle.maxLife = 0.8 + Math.random() * 0.5; // Longer lifetime
+                    particle.maxLife = 1.2 + Math.random() * 0.5; // Longer lifetime for greater distance
                     particle.life = particle.maxLife;
                     
                     // Assign random flame color

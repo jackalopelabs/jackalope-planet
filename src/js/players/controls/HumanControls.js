@@ -23,6 +23,9 @@ class HumanControls extends BaseControls {
         this.fpLookDirection = new THREE.Vector2(0, 0);
         this.targetFpLookDirection = new THREE.Vector2(0, 0);
         
+        // Flag to track view toggle request
+        this.viewToggleRequested = false;
+        
         // Bound methods for event listeners
         this.boundKeyDown = this.handleKeyDown.bind(this);
         this.boundKeyUp = this.handleKeyUp.bind(this);
@@ -66,7 +69,11 @@ class HumanControls extends BaseControls {
             container.addEventListener('click', () => {
                 console.log('Container clicked, requesting pointer lock');
                 if (document.pointerLockElement !== container) {
-                    container.requestPointerLock();
+                    try {
+                        container.requestPointerLock();
+                    } catch (error) {
+                        console.error('Error requesting pointer lock:', error);
+                    }
                 }
             });
         }
@@ -93,6 +100,38 @@ class HumanControls extends BaseControls {
         // Pass to camera system in Player
         if (typeof this.onCameraZoom === 'function') {
             this.onCameraZoom(scrollDirection);
+        }
+    }
+
+    /**
+     * Handle mouse button down
+     * @param {MouseEvent} event - Mouse down event
+     */
+    handleMouseDown(event) {
+        super.handleMouseDown(event);
+        
+        // Request pointer lock on click in first-person mode
+        if (this.firstPersonMode && this.container && document.pointerLockElement !== this.container) {
+            try {
+                this.container.requestPointerLock();
+            } catch (error) {
+                console.error('Error requesting pointer lock:', error);
+            }
+        }
+    }
+
+    /**
+     * Handle key down for special controls
+     * @param {KeyboardEvent} event - Key down event
+     */
+    handleKeyDown(event) {
+        super.handleKeyDown(event);
+        
+        // Detect view toggle key (v)
+        if (event.key.toLowerCase() === 'v' && this.canToggleView) {
+            // Don't toggle here; just flag the toggle for the next getInput() call
+            this.viewToggleRequested = true;
+            console.log('View toggle requested via V key');
         }
     }
 
@@ -180,19 +219,29 @@ class HumanControls extends BaseControls {
             interact: this.keys['e'] || this.mouseState.buttons[0] || false,
             crouch: this.keys['control'] || false,
             reload: this.keys['r'] || false,
-            toggleView: this.keys['v'] && this.canToggleView || false,
+            toggleView: this.viewToggleRequested,
             use: this.mouseState.buttons[2] || false // Right click
         };
         
-        // Check for view toggle
-        if (actions.toggleView) {
-            this.firstPersonMode = !this.firstPersonMode;
+        // Handle view toggle - Note: we don't change the mode directly anymore
+        // We set toggleView flag and let the player handle the toggling
+        const shouldToggleView = this.viewToggleRequested;
+        if (this.viewToggleRequested) {
+            this.viewToggleRequested = false;
+            console.log('View toggle requested from controls, letting player handle it');
+        }
+        
+        // Debug current look direction
+        if (this.firstPersonMode) {
+            console.debug('First-person look direction:', 
+                        this.fpLookDirection.x.toFixed(2), 
+                        this.fpLookDirection.y.toFixed(2));
         }
         
         return {
             moveDirection,
             lookDirection: this.firstPersonMode ? 
-                this.fpLookDirection : 
+                this.fpLookDirection.clone() : 
                 new THREE.Vector2(this.mouseState.movement.x, this.mouseState.movement.y),
             actions,
             cameraOrbit: { ...this.cameraOrbit },
@@ -211,15 +260,30 @@ class HumanControls extends BaseControls {
         window.removeEventListener('mousemove', this.boundMouseMove);
         window.removeEventListener('wheel', this.boundWheel);
         document.removeEventListener('pointerlockchange', this.boundPointerLockChange);
+        
+        // Release pointer lock if active
+        if (document.pointerLockElement && document.exitPointerLock) {
+            document.exitPointerLock();
+        }
     }
     
     /**
-     * Set callback for camera zoom - overrides BaseControls implementation
-     * for specific human behavior if needed
+     * Set callback for camera zoom
      * @param {Function} callback - Function to call when zoom changes
      */
     setCameraZoomCallback(callback) {
         this.onCameraZoom = callback;
+    }
+
+    /**
+     * Update firstPersonMode flag to match player state
+     * @param {boolean} isFirstPerson - Whether player is in first-person mode 
+     */
+    updateViewMode(isFirstPerson) {
+        if (this.firstPersonMode !== isFirstPerson) {
+            console.log('Controls: updating view mode to:', isFirstPerson ? 'first-person' : 'third-person');
+            this.firstPersonMode = isFirstPerson;
+        }
     }
 }
 

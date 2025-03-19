@@ -23,6 +23,8 @@ export class Game {
         // Game state
         this.gameMode = 'third_person'; // Will be determined/assigned for asymmetrical gameplay
         
+        this._isTogglingMode = false;
+        
         this.init();
     }
     
@@ -88,10 +90,16 @@ export class Game {
         this.inputManager.addInstructions(container);
         
         // Create player only after input manager is fully set up
-        this.createPlayer();
+        this.createNewPlayer();
     }
     
     createPlayer() {
+        // This is now a legacy method that calls createNewPlayer
+        // Keep for backward compatibility
+        this.createNewPlayer();
+    }
+    
+    createNewPlayer() {
         // Clean up existing player if any
         if (this.player) {
             this.player.cleanup();
@@ -100,13 +108,32 @@ export class Game {
         // Create player based on game mode
         try {
             if (this.gameMode === 'first_person') {
+                console.log('Creating first-person player');
+                
+                // Create the human player with first-person mode enabled
                 this.player = new HumanPlayer(this, {
                     isFirstPerson: true,
                     physics: { gravity: 9.8 },
                     movement: { movementSpeed: 5 },
-                    controls: { sensitivity: 0.002, invertY: false }
+                    controls: { 
+                        sensitivity: 0.002, 
+                        invertY: false,
+                        firstPersonMode: true  // Make sure controls know we're in first-person mode
+                    }
                 });
+                
+                // Make sure first-person mode stays active (prevent auto-toggle)
+                if (this.player.fpCamera) {
+                    // Delay slightly to ensure everything is ready
+                    setTimeout(() => {
+                        if (this.player && this.player.isFirstPerson && this.player.fpCamera) {
+                            console.log('Ensuring first-person camera is active');
+                            this.setActiveCamera(this.player.fpCamera);
+                        }
+                    }, 50);
+                }
             } else {
+                console.log('Creating third-person player');
                 this.player = new BunnyPlayer(this, {
                     physics: { gravity: 7.5 },
                     movement: { movementSpeed: 7 },
@@ -130,47 +157,93 @@ export class Game {
     }
     
     switchPlayerMode() {
-        // Toggle between game modes
-        this.gameMode = this.gameMode === 'first_person' ? 'third_person' : 'first_person';
+        // Toggle between game modes - keep a reference to what we're switching TO
+        const previousMode = this.gameMode;
+        const targetMode = this.gameMode === 'first_person' ? 'third_person' : 'first_person';
+        this.gameMode = targetMode;
         
-        // Recreate player with new mode
-        this.createPlayer();
+        console.log(`Switching player mode from ${previousMode} to ${this.gameMode}`);
+        
+        // Add a flag to prevent double-toggling
+        if (this._isTogglingMode) {
+            console.warn('Already toggling mode, ignoring redundant request');
+            return this.gameMode;
+        }
+        
+        this._isTogglingMode = true;
+        
+        // Properly clean up existing player
+        if (this.player) {
+            // First ensure any pointer lock is released for clean switching
+            if (document.pointerLockElement && document.exitPointerLock) {
+                document.exitPointerLock();
+            }
+            
+            // Wait a small delay before cleanup to ensure pointer lock is released
+            setTimeout(() => {
+                // Clean up existing player
+                this.player.cleanup();
+                
+                // Create new player with the toggled mode
+                this.createNewPlayer();
+                
+                // Reset the toggling flag after a safe amount of time
+                setTimeout(() => {
+                    this._isTogglingMode = false;
+                }, 500);
+            }, 50);
+        } else {
+            this.createNewPlayer();
+            
+            // Reset the toggling flag after a safe amount of time
+            setTimeout(() => {
+                this._isTogglingMode = false;
+            }, 500);
+        }
         
         return this.gameMode;
     }
     
     handleResize() {
-        const container = document.getElementById(this.containerId);
-        if (!container || !this.camera || !this.renderer) return;
+        if (!this.container || !this.camera || !this.renderer) return;
         
-        const width = container.clientWidth;
-        const height = container.clientHeight;
+        // Update renderer size
+        const width = this.container.clientWidth;
+        const height = this.container.clientHeight;
+        this.renderer.setSize(width, height);
         
         // Update camera aspect ratio
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
         
-        // Update renderer size
-        this.renderer.setSize(width, height);
+        // If player has first-person camera, update that too
+        if (this.player && this.player.fpCamera) {
+            this.player.fpCamera.aspect = width / height;
+            this.player.fpCamera.updateProjectionMatrix();
+        }
         
-        // Update pixel ratio for retina displays
-        this.renderer.setPixelRatio(window.devicePixelRatio);
+        console.log('Resized renderer and camera:', width, 'x', height);
     }
     
     animate() {
-        if (!this.scene || !this.camera || !this.renderer || !this.player) return;
-        
         requestAnimationFrame(() => this.animate());
         
         const delta = this.clock.getDelta();
+        
+        // Update world
+        if (this.world) {
+            this.world.update(delta);
+        }
         
         // Update player
         if (this.player) {
             this.player.update(delta);
         }
         
-        // Render the scene
-        this.renderer.render(this.scene, this.camera);
+        // Render the scene with the active camera
+        if (this.scene && this.camera && this.renderer) {
+            this.renderer.render(this.scene, this.camera);
+        }
     }
     
     /**
@@ -178,11 +251,23 @@ export class Game {
      * @param {THREE.Camera} camera - The camera to use for rendering
      */
     setActiveCamera(camera) {
-        if (camera) {
-            this.camera = camera;
-            // Update aspect ratio for the new camera
-            this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
-            this.camera.updateProjectionMatrix();
+        if (!camera) {
+            console.error('setActiveCamera: camera is null or undefined');
+            return;
+        }
+        
+        console.log('Setting active camera:', camera.type, camera.uuid);
+        
+        // Save the camera reference
+        this.camera = camera;
+        
+        // Update aspect ratio for the new camera
+        if (this.container) {
+            camera.aspect = this.container.clientWidth / this.container.clientHeight;
+            camera.updateProjectionMatrix();
+            console.log('Updated camera aspect ratio:', camera.aspect);
+        } else {
+            console.warn('Cannot update camera aspect ratio: container is null');
         }
     }
 } 

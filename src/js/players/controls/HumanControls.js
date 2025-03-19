@@ -165,10 +165,13 @@ class HumanControls extends BaseControls {
         
         if (this.firstPersonMode) {
             // First person - direct camera control
-            this.targetFpLookDirection.x += deltaX;
+            // Always use consistent world-space orientation for rotation
+            // Subtract for X to make right mouse movement rotate right
+            this.targetFpLookDirection.x -= deltaX;
+            // Subtract for Y to make up mouse movement rotate up
             this.targetFpLookDirection.y = Math.max(
                 -Math.PI / 2 + 0.1, 
-                Math.min(Math.PI / 2 - 0.1, this.targetFpLookDirection.y + deltaY)
+                Math.min(Math.PI / 2 - 0.1, this.targetFpLookDirection.y - deltaY)
             );
             
             // Smooth look movement

@@ -180,17 +180,14 @@ class HumanPlayer extends Player {
             'YXZ'           // Order of rotations
         );
         
-        this.fpCamera.setRotationFromEuler(eulerRotation);
+        // Set camera rotation directly
+        this.fpCamera.rotation.copy(eulerRotation);
         
-        // Also rotate the model horizontally to face movement direction
+        // Rotate the model to match camera's horizontal direction.
+        // IMPORTANT: This rotation is used for movement direction calculations in HumanMovement
         if (this.model) {
-            const modelRotation = new THREE.Euler(
-                0,              // No pitch
-                lookDirection.x, // Only yaw
-                0,              // No roll
-                'YXZ'
-            );
-            this.model.setRotationFromEuler(modelRotation);
+            // Only use the horizontal component (y-axis rotation) for the model
+            this.model.rotation.y = lookDirection.x;
         }
     }
     

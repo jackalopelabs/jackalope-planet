@@ -52,47 +52,71 @@ class HumanMovement extends BaseMovement {
         if (this.isSprinting) effectiveSpeed *= this.sprintMultiplier;
         if (this.isCrouching) effectiveSpeed *= this.crouchMultiplier;
         
-        // Calculate camera-relative movement direction
-        let cameraAngle = 0;
-        
-        if (isFirstPerson && input.lookDirection) {
-            // In first-person, use the camera's horizontal rotation
-            cameraAngle = input.lookDirection.x;
-        } else {
-            // In third-person, use orbit angle
-            cameraAngle = input.cameraOrbit ? input.cameraOrbit.cameraAngle : 0;
-        }
-        
-        // Get forward and right vectors relative to camera
-        const forward = new THREE.Vector3(0, 0, -1);
-        forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngle);
-        forward.y = 0; // Keep movement on ground plane
-        forward.normalize();
-        
-        const right = new THREE.Vector3(1, 0, 0);
-        right.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraAngle);
-        right.y = 0; // Keep movement on ground plane
-        right.normalize();
-        
-        // Calculate movement vector
+        // Calculate movement vector in camera-relative space
         const movementVector = new THREE.Vector3();
         let isMoving = false;
         
-        if (moveDirection.z < 0) { // Forward
-            movementVector.add(forward.clone().multiplyScalar(effectiveSpeed * delta));
-            isMoving = true;
-        }
-        if (moveDirection.z > 0) { // Back
-            movementVector.add(forward.clone().multiplyScalar(-effectiveSpeed * delta));
-            isMoving = true;
-        }
-        if (moveDirection.x < 0) { // Left
-            movementVector.add(right.clone().multiplyScalar(-effectiveSpeed * delta));
-            isMoving = true;
-        }
-        if (moveDirection.x > 0) { // Right
-            movementVector.add(right.clone().multiplyScalar(effectiveSpeed * delta));
-            isMoving = true;
+        if (isFirstPerson) {
+            // First-person mode - movement relative to camera direction
+            if (moveDirection.z !== 0 || moveDirection.x !== 0) {
+                isMoving = true;
+                
+                // Get the camera's forward and right vectors
+                const cameraDirection = new THREE.Vector3();
+                if (player.fpCamera) {
+                    // Get world camera direction (ignoring pitch for movement)
+                    const matrix = new THREE.Matrix4();
+                    matrix.extractRotation(player.fpCamera.matrixWorld);
+                    
+                    // Forward vector (from camera's -Z direction)
+                    cameraDirection.set(0, 0, -1).applyMatrix4(matrix);
+                    cameraDirection.y = 0; // Project onto XZ plane
+                    cameraDirection.normalize();
+                    
+                    // Right vector (perpendicular to forward)
+                    const right = new THREE.Vector3();
+                    right.crossVectors(new THREE.Vector3(0, 1, 0), cameraDirection).normalize();
+                    
+                    // Combine forward/backward and left/right components
+                    if (moveDirection.z !== 0) {
+                        // Negate the moveDirection.z value to fix inverted forward/backward
+                        movementVector.add(cameraDirection.clone().multiplyScalar(-moveDirection.z * effectiveSpeed * delta));
+                    }
+                    
+                    if (moveDirection.x !== 0) {
+                        // Negate the moveDirection.x value to fix inverted left/right
+                        movementVector.add(right.clone().multiplyScalar(-moveDirection.x * effectiveSpeed * delta));
+                    }
+                }
+            }
+        } else {
+            // Third-person mode - orbit camera relative movement
+            if (moveDirection.z !== 0 || moveDirection.x !== 0) {
+                isMoving = true;
+                
+                // Get the orbit camera angle
+                const orbitAngle = input.cameraOrbit ? input.cameraOrbit.cameraAngle : 0;
+                
+                // Calculate forward and right vectors based on camera angle
+                const forward = new THREE.Vector3(0, 0, -1);
+                forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), orbitAngle);
+                forward.y = 0; // Keep movement on ground plane
+                forward.normalize();
+                
+                const right = new THREE.Vector3(1, 0, 0);
+                right.applyAxisAngle(new THREE.Vector3(0, 1, 0), orbitAngle);
+                right.y = 0; // Keep movement on ground plane
+                right.normalize();
+                
+                // Apply movement
+                if (moveDirection.z !== 0) {
+                    movementVector.add(forward.clone().multiplyScalar(moveDirection.z * effectiveSpeed * delta));
+                }
+                
+                if (moveDirection.x !== 0) {
+                    movementVector.add(right.clone().multiplyScalar(moveDirection.x * effectiveSpeed * delta));
+                }
+            }
         }
         
         // Apply movement and head bob when moving

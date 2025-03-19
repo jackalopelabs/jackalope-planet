@@ -5,7 +5,7 @@ import { BunnyPlayer } from '../players/BunnyPlayer';
 import { HumanPlayer } from '../players/HumanPlayer';
 import { World } from '../world/World';
 
-class Game {
+export class Game {
     constructor(containerId) {
         this.containerId = containerId;
         this.scene = null;
@@ -50,7 +50,11 @@ class Game {
         this.inputManager.addInstructions(container);
         
         // Set up event listeners
-        window.addEventListener('resize', () => this.handleResize(container));
+        window.addEventListener('resize', () => this.handleResize());
+        document.addEventListener('fullscreenchange', () => this.handleResize());
+        
+        // Ensure initial size is correct
+        this.handleResize();
         
         // Start animation loop
         this.animate();
@@ -96,12 +100,22 @@ class Game {
         this.createPlayer();
     }
     
-    handleResize(container) {
-        if (!this.camera || !this.renderer) return;
+    handleResize() {
+        const container = document.getElementById(this.containerId);
+        if (!container || !this.camera || !this.renderer) return;
         
-        this.camera.aspect = container.clientWidth / container.clientHeight;
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        
+        // Update camera aspect ratio
+        this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(container.clientWidth, container.clientHeight);
+        
+        // Update renderer size
+        this.renderer.setSize(width, height);
+        
+        // Update pixel ratio for retina displays
+        this.renderer.setPixelRatio(window.devicePixelRatio);
     }
     
     animate() {
@@ -119,6 +133,4 @@ class Game {
         // Render the scene
         this.renderer.render(this.scene, this.camera);
     }
-}
-
-export { Game }; 
+} 

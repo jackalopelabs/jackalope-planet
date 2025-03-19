@@ -17,6 +17,12 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Initializing game in container: ${containerId}`);
             const game = new Game(containerId);
             games.push(game);
+            
+            // Add first-person cursor dot
+            const fpCursor = document.createElement('div');
+            fpCursor.className = 'first-person-cursor';
+            fpCursor.id = `${containerId}-fp-cursor`;
+            document.body.appendChild(fpCursor);
         } else {
             console.error('Container without ID found, skipping');
         }
@@ -25,8 +31,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Flag to prevent double key presses
     let isProcessingKeyPress = false;
     
-    // Track current mode to prevent redundant switches
+    // Track current mode across all games
     let currentMode = 'third_person';
+    
+    // Add info text about controls
+    containers.forEach(container => {
+        const infoText = document.createElement('div');
+        infoText.className = 'jackalope-controls-info';
+        infoText.innerHTML = 'Press <strong>T</strong> to toggle first/third person view';
+        infoText.style.position = 'absolute';
+        infoText.style.bottom = '10px';
+        infoText.style.left = '10px';
+        infoText.style.color = 'white';
+        infoText.style.backgroundColor = 'rgba(0,0,0,0.5)';
+        infoText.style.padding = '5px 10px';
+        infoText.style.borderRadius = '4px';
+        infoText.style.fontSize = '14px';
+        infoText.style.zIndex = '10';
+        container.appendChild(infoText);
+    });
     
     // Global key handler for view toggle (T key)
     window.addEventListener('keydown', (event) => {
@@ -45,6 +68,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Update tracked mode
             currentMode = targetMode;
+            
+            // Toggle FP cursor visibility
+            document.querySelectorAll('.first-person-cursor').forEach(cursor => {
+                cursor.style.display = targetMode === 'first_person' ? 'block' : 'none';
+            });
             
             // Wait a brief moment to ensure pointer lock is released
             setTimeout(() => {
@@ -69,5 +97,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 1000);
             }, 100);
         }
+    });
+    
+    // Toggle cursor visibility based on pointer lock state
+    document.addEventListener('pointerlockchange', () => {
+        const isLocked = !!document.pointerLockElement;
+        const inFirstPerson = currentMode === 'first_person';
+        
+        // Only show cursor in first-person AND when pointer is locked
+        document.querySelectorAll('.first-person-cursor').forEach(cursor => {
+            cursor.style.display = (isLocked && inFirstPerson) ? 'block' : 'none';
+        });
     });
 }); 

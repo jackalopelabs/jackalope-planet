@@ -187,6 +187,22 @@ export class Game {
                 // Create new player with the toggled mode
                 this.createNewPlayer();
                 
+                // If switching to first-person, need to request pointer lock
+                if (this.gameMode === 'first_person' && this.player) {
+                    // Small delay to ensure player is fully initialized
+                    setTimeout(() => {
+                        if (this.container && document.pointerLockElement !== this.container) {
+                            console.log('Requesting pointer lock after switching to first-person mode');
+                            this.container.requestPointerLock();
+                        }
+                    }, 100);
+                }
+                
+                // Update input manager's firstPerson flag if it exists
+                if (this.inputManager) {
+                    this.inputManager.isFirstPerson = (this.gameMode === 'first_person');
+                }
+                
                 // Reset the toggling flag after a safe amount of time
                 setTimeout(() => {
                     this._isTogglingMode = false;

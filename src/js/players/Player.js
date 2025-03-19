@@ -53,7 +53,21 @@ class Player {
     handleMouseMove(event, mouseState) {
         // Forward to controls if available
         if (this.controls) {
-            this.controls.handleMouseMove(event, mouseState);
+            // Check if we're in pointer lock mode
+            if (document.pointerLockElement === this.game.container) {
+                // For pointer lock, use movementX/Y instead of position
+                const pointerLockState = {
+                    movementX: event.movementX || 0,
+                    movementY: event.movementY || 0,
+                    isPointerLocked: true
+                };
+                
+                // Forward pointer lock mouse data to controls
+                this.controls.handleMouseMove(event, pointerLockState);
+            } else {
+                // Standard mouse movement tracking for third-person
+                this.controls.handleMouseMove(event, mouseState);
+            }
         }
     }
     

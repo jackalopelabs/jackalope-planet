@@ -23,7 +23,10 @@ class InputManager {
         this.targetCameraAngleY = this.cameraAngleY;
         this.orbitSpeed = 0.005;
         
-        console.log('InputManager created');
+        // First-person mode flag - this will be synced with game.gameMode
+        this.isFirstPerson = (this.game && this.game.gameMode === 'first_person');
+        
+        console.log('InputManager created - FP mode:', this.isFirstPerson);
         this.setupEventListeners();
     }
     
@@ -52,11 +55,29 @@ class InputManager {
         document.addEventListener('keydown', (event) => this.handleKey(event, true));
         document.addEventListener('keyup', (event) => this.handleKey(event, false));
         
+        // Pointer lock change event
+        document.addEventListener('pointerlockchange', () => {
+            console.log('Pointer lock state changed:', !!document.pointerLockElement);
+        });
+        
+        // Pointer lock error event
+        document.addEventListener('pointerlockerror', () => {
+            console.error('Pointer lock error');
+        });
+        
         console.log('InputManager event listeners setup complete');
     }
     
     handleMouseDown(event) {
         console.log('Mouse down in InputManager');
+        
+        // Request pointer lock specifically when in first-person mode
+        if (this.isFirstPerson && this.container) {
+            if (document.pointerLockElement !== this.container) {
+                console.log('Requesting pointer lock for first-person mode');
+                this.container.requestPointerLock();
+            }
+        }
         
         if (this.game.player) {
             this.game.player.handleMouseDown(event);

@@ -45,9 +45,17 @@ class HumanPlayer extends Player {
 
         // If first-person mode is enabled, set it up immediately after initialization
         if (this.isFirstPerson) {
-            // Immediate setup without delay
+            // Setup without delay
             this.setupFirstPersonCamera();
             this.toggleViewMode(true);
+            
+            // Double-check that camera is properly set as active with a small delay
+            setTimeout(() => {
+                if (this.isActive && this.isFirstPerson && this.fpCamera && this.game) {
+                    console.log('Ensuring first-person camera is active after small delay');
+                    this.game.setActiveCamera(this.fpCamera);
+                }
+            }, 100);
         }
     }
     
@@ -118,6 +126,9 @@ class HumanPlayer extends Player {
         if (this.isFirstPerson && this.game && typeof this.game.setActiveCamera === 'function') {
             console.log('Setting first-person camera as active after setup');
             this.game.setActiveCamera(this.fpCamera);
+            
+            // Create first-person visuals for hands
+            this.createFirstPersonVisuals();
         }
     }
     

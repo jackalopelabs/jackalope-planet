@@ -32,6 +32,21 @@
         transition: opacity 0.3s ease;
     }
 
+    .jackalope-controls-info {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        color: white;
+        background-color: rgba(0, 0, 0, 0.5);
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 14px;
+        z-index: 10;
+        font-family: Arial, sans-serif;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
     .instructions-content {
         max-width: 400px;
         background-color: rgba(0, 0, 0, 0.7);
@@ -50,5 +65,25 @@
         margin: 8px 0;
         font-size: 16px;
         line-height: 1.4;
+    }
+    
+    /* First person specific styles */
+    .first-person-cursor {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: rgba(255, 255, 255, 0.5);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        z-index: 9999;
+        display: none;
+    }
+    
+    :fullscreen .jackalope-controls-info {
+        font-size: 16px;
+        padding: 8px 12px;
     }
 } 

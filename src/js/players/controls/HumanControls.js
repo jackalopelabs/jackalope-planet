@@ -139,14 +139,29 @@ class HumanControls extends BaseControls {
      * Handle mouse movement based on current view mode
      * @param {MouseEvent} event - Mouse move event
      */
-    handleMouseMove(event) {
-        super.handleMouseMove(event);
+    handleMouseMove(event, mouseState) {
+        super.handleMouseMove(event, mouseState);
         
-        if (!this.isPointerLocked) return;
+        // For pointer lock mode, we need to use movementX/Y directly
+        let deltaX = 0;
+        let deltaY = 0;
         
-        // Apply sensitivity to mouse movement
-        const deltaX = event.movementX * this.sensitivity;
-        const deltaY = event.movementY * this.sensitivity * (this.invertY ? -1 : 1);
+        if (mouseState && mouseState.isPointerLocked) {
+            // Use movementX/Y from the pointer lock state
+            deltaX = mouseState.movementX * this.sensitivity;
+            deltaY = mouseState.movementY * this.sensitivity * (this.invertY ? -1 : 1);
+            this.isPointerLocked = true;
+        } else if (this.isPointerLocked && event.movementX !== undefined) {
+            // Direct pointer lock event
+            deltaX = event.movementX * this.sensitivity;
+            deltaY = event.movementY * this.sensitivity * (this.invertY ? -1 : 1);
+        } else if (!this.isPointerLocked && mouseState) {
+            // Standard mouse movement (third-person)
+            return;
+        } else {
+            // No valid mouse data
+            return;
+        }
         
         if (this.firstPersonMode) {
             // First person - direct camera control
@@ -229,13 +244,6 @@ class HumanControls extends BaseControls {
         if (this.viewToggleRequested) {
             this.viewToggleRequested = false;
             console.log('View toggle requested from controls, letting player handle it');
-        }
-        
-        // Debug current look direction
-        if (this.firstPersonMode) {
-            console.debug('First-person look direction:', 
-                        this.fpLookDirection.x.toFixed(2), 
-                        this.fpLookDirection.y.toFixed(2));
         }
         
         return {

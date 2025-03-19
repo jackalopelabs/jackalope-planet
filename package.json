@@ -1,0 +1,32 @@
+{
+    "name": "jackalope-planet",
+    "version": "1.0.0",
+    "description": "A 3D interactive Jackalope Planet WordPress plugin",
+    "type": "module",
+    "main": "index.js",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "keywords": [
+        "wordpress",
+        "plugin",
+        "three.js",
+        "3d",
+        "jackalope"
+    ],
+    "author": "Bonsai",
+    "license": "MIT",
+    "dependencies": {
+        "three": "^0.150.1"
+    },
+    "devDependencies": {
+        "@tailwindcss/postcss": "^4.0.14",
+        "@tailwindcss/vite": "^4.0.14",
+        "autoprefixer": "^10.4.18",
+        "postcss": "^8.4.35",
+        "tailwindcss": "^4.0.9",
+        "vite": "^6.2.0"
+    }
+}

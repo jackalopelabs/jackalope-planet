@@ -1,0 +1,30 @@
+{
+    "name": "jackalopelabs/jackalope-planet",
+    "description": "A 3D interactive Jackalope Planet WordPress plugin",
+    "type": "wordpress-plugin",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Jackalope Labs",
+            "email": "info@jackalopelabs.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "JackalopeLabs\\JackalopePlanet\\": "src/"
+        }
+    },
+    "extra": {
+        "installer-paths": {
+            "web/app/plugins/{$name}/": ["type:wordpress-plugin"]
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "composer/installers": true
+        }
+    }
+} 

@@ -15,6 +15,7 @@ class World {
         
         // Create environment
         this.createGround();
+        this.createHills();
         
         // Add decorative elements
         this.addStars();
@@ -51,6 +52,52 @@ class World {
         ground.rotation.x = -Math.PI / 2; // Lay flat on XZ plane
         ground.position.y = 0;
         this.scene.add(ground);
+    }
+    
+    createHills() {
+        // Add some low poly hills to the terrain
+        const hillColors = [0x66aa77, 0x77bb88, 0x88cc99];
+        
+        // Create several hills with different positions and sizes
+        for (let i = 0; i < 12; i++) {
+            // Random position within the ground area
+            const x = (Math.random() - 0.5) * 80;
+            const z = (Math.random() - 0.5) * 80;
+            
+            // Random size
+            const width = Math.random() * 10 + 5;
+            const height = Math.random() * 4 + 1;
+            const depth = Math.random() * 10 + 5;
+            
+            // Create a low-poly hill using a cone geometry
+            const segmentsRadial = Math.floor(Math.random() * 3) + 3; // 3-5 segments for low poly look
+            const segmentsHeight = 1;
+            const hillGeometry = new THREE.ConeGeometry(
+                width,
+                height,
+                segmentsRadial,
+                segmentsHeight,
+                true
+            );
+            
+            // Randomly select a color
+            const colorIndex = Math.floor(Math.random() * hillColors.length);
+            const hillMaterial = new THREE.MeshStandardMaterial({
+                color: hillColors[colorIndex],
+                flatShading: true, // Important for low poly look
+                roughness: 0.8,
+                metalness: 0.1
+            });
+            
+            const hill = new THREE.Mesh(hillGeometry, hillMaterial);
+            
+            // Position and rotate
+            hill.position.set(x, height / 2, z);
+            hill.rotation.y = Math.random() * Math.PI; // Random rotation
+            
+            // Add to scene
+            this.scene.add(hill);
+        }
     }
     
     addStars() {

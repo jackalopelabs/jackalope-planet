@@ -47,8 +47,8 @@ class InputManager {
             this.handleMouseMove(event);
         });
         
-        document.addEventListener('mouseup', () => {
-            this.isMouseDown = false;
+        document.addEventListener('mouseup', (event) => {
+            this.handleMouseUp(event);
         });
         
         // Key press event listeners for movement and mode switching
@@ -96,6 +96,16 @@ class InputManager {
         this.isMouseDown = true;
         this.prevMouseX = event.clientX;
         this.prevMouseY = event.clientY;
+    }
+    
+    handleMouseUp(event) {
+        console.log('Mouse up in InputManager');
+        this.isMouseDown = false;
+        
+        // Forward mouse up event to player for weapon firing
+        if (this.game.player) {
+            this.game.player.handleMouseUp(event);
+        }
     }
     
     handleMouseMove(event) {
@@ -151,6 +161,7 @@ class InputManager {
                 <p>W, A, S, D to move</p>
                 <p>In third-person: Hold and drag mouse to orbit camera</p>
                 <p>In first-person: Mouse to look around</p>
+                <p>In first-person: Click to shoot flamethrower</p>
                 <p>Press T to toggle between modes</p>
                 <p>Press ESC to exit game mode</p>
             </div>

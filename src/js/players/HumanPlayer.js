@@ -3,6 +3,7 @@ import { Player } from './Player';
 import { HumanPhysics } from './physics/HumanPhysics';
 import { HumanMovement } from './movement/HumanMovement';
 import { HumanControls } from './controls/HumanControls';
+import { Flamethrower } from './weapons/Flamethrower';
 
 class HumanPlayer extends Player {
     constructor(game, options = {}) {
@@ -19,6 +20,10 @@ class HumanPlayer extends Player {
         // First-person camera
         this.fpCamera = null;
         this.isFirstPerson = options.isFirstPerson || false;
+        
+        // Weapon system
+        this.weapon = null;
+        this.isFiring = false;
         
         // Prevent delayed setup from running if player is cleaned up
         this.isActive = true;
@@ -70,6 +75,21 @@ class HumanPlayer extends Player {
         
         // Set initial camera position (third-person)
         this.updateCameraPosition();
+        
+        // Initialize weapon system
+        this.initWeapon();
+    }
+    
+    /**
+     * Initialize the weapon for the player
+     */
+    initWeapon() {
+        // Only have weapons in first-person mode
+        if (this.isFirstPerson) {
+            // Create a flamethrower weapon
+            this.weapon = new Flamethrower(this);
+            console.log('Flamethrower weapon initialized');
+        }
     }
     
     /**
@@ -132,6 +152,60 @@ class HumanPlayer extends Player {
         }
     }
     
+    /**
+     * Handle mouse down event
+     * @param {MouseEvent} event - Mouse event
+     */
+    handleMouseDown(event) {
+        super.handleMouseDown(event);
+        
+        // Only handle weapon firing in first-person mode
+        if (this.isFirstPerson && this.weapon) {
+            // Left mouse button (0) for firing
+            if (event.button === 0) {
+                this.startFiring();
+            }
+        }
+    }
+    
+    /**
+     * Handle mouse up event
+     * @param {MouseEvent} event - Mouse event
+     */
+    handleMouseUp(event) {
+        super.handleMouseUp(event);
+        
+        // Only handle weapon firing in first-person mode
+        if (this.isFirstPerson && this.weapon) {
+            // Left mouse button (0) for firing
+            if (event.button === 0) {
+                this.stopFiring();
+            }
+        }
+    }
+    
+    /**
+     * Start firing the weapon
+     */
+    startFiring() {
+        if (this.weapon) {
+            this.isFiring = true;
+            this.weapon.startFire();
+            console.log('Started firing weapon');
+        }
+    }
+    
+    /**
+     * Stop firing the weapon
+     */
+    stopFiring() {
+        if (this.weapon) {
+            this.isFiring = false;
+            this.weapon.stopFire();
+            console.log('Stopped firing weapon');
+        }
+    }
+    
     update(delta) {
         if (!this.model || !this.isActive) {
             console.warn('HumanPlayer update: model not initialized or player not active');
@@ -154,6 +228,11 @@ class HumanPlayer extends Player {
         } else if (this.fpCamera && input) {
             // Update first-person camera rotation based on look direction
             this.updateFirstPersonCamera(input.lookDirection);
+        }
+        
+        // Update weapon system
+        if (this.weapon) {
+            this.weapon.update(delta);
         }
     }
     
@@ -206,6 +285,22 @@ class HumanPlayer extends Player {
             this.controls.updateViewMode(this.isFirstPerson);
         }
         
+        // Update weapon system based on view mode
+        if (this.isFirstPerson) {
+            // Initialize weapon if not already done
+            if (!this.weapon) {
+                this.initWeapon();
+            } else if (this.weapon) {
+                // Make sure the weapon is properly attached
+                this.weapon.attachToPlayer();
+            }
+        } else {
+            // Stop firing when switching to third-person
+            if (this.isFiring) {
+                this.stopFiring();
+            }
+        }
+        
         if (this.isFirstPerson) {
             // Switch to first-person
             if (!this.fpCamera) {
@@ -248,39 +343,22 @@ class HumanPlayer extends Player {
                     }
                 });
             }
-            
-            // Show a simple weapon model or hands if we're in first-person mode
-            this.createFirstPersonVisuals();
         } else {
             // Switch to third-person
-            if (this.game && typeof this.game.setActiveCamera === 'function') {
-                // Make sure the main camera is set to render all layers
-                this.camera.layers.enableAll();
-                
-                // Switch back to the main camera
-                this.game.setActiveCamera(this.camera);
+            if (this.game.camera) {
+                // Reset to main camera
+                this.game.setActiveCamera(this.game.camera);
                 console.log('Switched to third-person camera');
-            } else {
-                console.error('Failed to switch to third-person camera');
             }
             
-            // Show player model
+            // Show player model again
             if (this.model) {
                 this.model.traverse(child => {
                     if (child.isMesh) {
                         child.layers.set(0); // Reset to default layer
                     }
                 });
-                
-                // Reset model rotation
-                this.model.rotation.set(0, 0, 0);
             }
-            
-            // Update third-person camera
-            this.updateCameraPosition();
-            
-            // Remove first-person visuals
-            this.removeFirstPersonVisuals();
         }
     }
     
@@ -360,6 +438,12 @@ class HumanPlayer extends Player {
                 this.fpCamera.parent.remove(this.fpCamera);
             }
             this.fpCamera = null;
+        }
+        
+        // Clean up weapon
+        if (this.weapon) {
+            this.weapon.cleanup();
+            this.weapon = null;
         }
         
         super.cleanup();

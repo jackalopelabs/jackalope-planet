@@ -162,6 +162,15 @@ class Player {
             }
         }
     }
+    
+    /**
+     * Handle mouse up event
+     * @param {MouseEvent} event - Mouse event
+     */
+    handleMouseUp(event) {
+        // Base implementation does nothing
+        // This will be overridden by specific player types
+    }
 }
 
 export { Player }; 

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { HumanWeapon } from './HumanWeapon';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { getAssetPath, checkAssetExists, getModelPath } from '../../utils/AssetLoader';
 
 // Add a global debugging helper
 let flamethrowerInstance = null;
@@ -250,9 +252,332 @@ class Flamethrower extends HumanWeapon {
     }
     
     createWeaponModel() {
-        // Create a simple flamethrower model
+        // Create a group to hold the loaded model
         const group = new THREE.Group();
         
+        // Ensure group isn't frustum culled
+        group.frustumCulled = false;
+        
+        // Store a reference to the group for positioning updates
+        this.modelGroup = group;
+        
+        // Get the direct model path from settings
+        const directModelPath = getModelPath('flamethrower');
+        
+        // Try the direct path first
+        console.log('[DEBUG] Attempting to load flamethrower directly from:', directModelPath);
+        
+        checkAssetExists(directModelPath)
+            .then(exists => {
+                if (exists) {
+                    // If the direct path exists, use it
+                    console.log('[DEBUG] Direct model path exists, loading model');
+                    
+                    // Add a coordinate axes helper to visualize orientation
+                    const axesHelper = new THREE.AxesHelper(0.2);
+                    group.add(axesHelper);
+                    console.log('[DEBUG] Added axes helper to model group');
+                    
+                    // Add a visible helper object to ensure the group is visible
+                    const helperSphere = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.1, 8, 8),
+                        new THREE.MeshBasicMaterial({ color: 0x0000ff })
+                    );
+                    helperSphere.position.set(0, 0, 0);
+                    helperSphere.frustumCulled = false;
+                    group.add(helperSphere);
+                    console.log('[DEBUG] Added helper sphere to model group');
+                    
+                    // Now load the actual model
+                    this.loadModel(directModelPath, group);
+                } else {
+                    console.log('[DEBUG] Direct model path does not exist, trying alternatives');
+                    // Define several possible paths to try
+                    const possiblePaths = [
+                        'assets/models/weapons/flamethrower.glb',               // Assets directory (preferred)
+                        'src/assets/models/weapons/flamethrower.glb',           // Source assets directory
+                        'src/js/assets/models/weapons/flamethrower.glb',        // JS assets directory
+                        'models/weapons/flamethrower.glb',                     // Simplified path
+                        'flamethrower.glb'                                     // Direct in plugin root
+                    ];
+                    
+                    console.log('[DEBUG] Will try these paths for the flamethrower model:');
+                    const resolvedPaths = possiblePaths.map(path => {
+                        const resolved = getAssetPath(path);
+                        console.log(`[DEBUG] - ${path} => ${resolved}`);
+                        return { original: path, resolved };
+                    });
+                    
+                    // Check which paths actually exist
+                    Promise.all(resolvedPaths.map(path => 
+                        checkAssetExists(path.resolved)
+                            .then(exists => ({ ...path, exists }))
+                    ))
+                    .then(results => {
+                        console.log('[DEBUG] Path existence check results:');
+                        results.forEach(result => {
+                            console.log(`[DEBUG] - ${result.original}: ${result.exists ? 'EXISTS' : 'NOT FOUND'}`);
+                        });
+                        
+                        // Find the first path that exists
+                        const validPath = results.find(result => result.exists);
+                        
+                        if (validPath) {
+                            console.log('[DEBUG] Using valid path:', validPath.resolved);
+                            this.loadModel(validPath.resolved, group);
+                        } else {
+                            console.error('[DEBUG] No valid model path found, using fallback');
+                            this.createSimpleGeometricModel(group);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('[DEBUG] Error checking paths:', error);
+                        this.createSimpleGeometricModel(group);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('[DEBUG] Error checking direct model path:', error);
+                this.createSimpleGeometricModel(group);
+            });
+        
+        // Position for FPS view - careful positioning to ensure visibility
+        group.position.set(0.15, -0.15, -0.20); // Bring closer to camera
+        
+        this.model = group;
+        
+        // Add to camera or player model
+        if (this.player.isFirstPerson && this.player.fpCamera) {
+            this.player.fpCamera.add(this.model);
+            console.log('[DEBUG] Added weapon model to first-person camera');
+            
+            // Log camera and model relationship
+            const camPos = new THREE.Vector3();
+            this.player.fpCamera.getWorldPosition(camPos);
+            console.log('[DEBUG] Camera world position:', 
+                camPos.x.toFixed(2), 
+                camPos.y.toFixed(2), 
+                camPos.z.toFixed(2));
+            
+            const modelPos = new THREE.Vector3();
+            this.model.getWorldPosition(modelPos);
+            console.log('[DEBUG] Model world position:', 
+                modelPos.x.toFixed(2), 
+                modelPos.y.toFixed(2), 
+                modelPos.z.toFixed(2));
+        } else if (this.player.model) {
+            this.player.model.add(this.model);
+            console.log('[DEBUG] Added weapon model to player model');
+        }
+    }
+    
+    // Load the model using a known valid path
+    loadModel(modelPath, group) {
+        const loader = new GLTFLoader();
+        
+        loader.load(
+            modelPath,
+            (gltf) => {
+                // Success callback
+                console.log('[DEBUG] Flamethrower model loaded successfully from:', modelPath);
+                
+                // Add the loaded model to our group
+                this.loadedModel = gltf.scene;
+                
+                // Ensure model and children aren't frustum culled (ensures visibility regardless of position)
+                gltf.scene.frustumCulled = false;
+                gltf.scene.traverse(child => {
+                    child.frustumCulled = false;
+                });
+                
+                // Add to group
+                group.add(gltf.scene);
+                
+                // Adjust model scale and position more dramatically for visibility testing
+                gltf.scene.scale.set(1.0, 1.0, 1.0); // Much larger scale for visibility
+                
+                // Debug box to visualize model bounds
+                const box = new THREE.Box3().setFromObject(gltf.scene);
+                const size = box.getSize(new THREE.Vector3());
+                const boxHelper = new THREE.BoxHelper(gltf.scene, 0xff0000);
+                boxHelper.frustumCulled = false;
+                group.add(boxHelper);
+                console.log('[DEBUG] Model size:', 
+                    size.x.toFixed(2), 
+                    size.y.toFixed(2), 
+                    size.z.toFixed(2));
+                
+                // Try different rotations - adjusted for better visibility in first-person view
+                gltf.scene.rotation.set(0, Math.PI, 0); // Face towards player
+                
+                // Add a visible sphere at origin for reference
+                const originSphere = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.05, 8, 8),
+                    new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+                );
+                originSphere.frustumCulled = false;
+                group.add(originSphere);
+                
+                // Store the nozzle tip position - may need adjustment based on model
+                // Update based on model analysis
+                this.nozzleTipPosition = new THREE.Vector3(0, 0, 1.0);
+                
+                // Try to find a better nozzle position based on the model's structure
+                const flamethrowerPart = this.findObjectByName(gltf.scene, "FlamethrowerElonMusk_2");
+                if (flamethrowerPart) {
+                    console.log('[DEBUG] Found main flamethrower part');
+                    
+                    // Get the bounding box of this specific part
+                    const flameThrowerBox = new THREE.Box3().setFromObject(flamethrowerPart);
+                    const flameSize = flameThrowerBox.getSize(new THREE.Vector3());
+                    const flameCenter = flameThrowerBox.getCenter(new THREE.Vector3());
+                    
+                    console.log('[DEBUG] Flamethrower part size:', 
+                        flameSize.x.toFixed(2), 
+                        flameSize.y.toFixed(2), 
+                        flameSize.z.toFixed(2));
+                    
+                    console.log('[DEBUG] Flamethrower part center:', 
+                        flameCenter.x.toFixed(2), 
+                        flameCenter.y.toFixed(2), 
+                        flameCenter.z.toFixed(2));
+                    
+                    // Estimate the nozzle position based on the flamethrower part's bounds
+                    this.nozzleTipPosition = new THREE.Vector3(
+                        flameCenter.x,
+                        flameCenter.y,
+                        flameCenter.z + flameSize.z/2 // Add half the z-size to get to the front
+                    );
+                    
+                    // Add a red sphere to visualize the nozzle position
+                    const nozzleSphere = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.05, 8, 8),
+                        new THREE.MeshBasicMaterial({ color: 0xff0000 })
+                    );
+                    nozzleSphere.position.copy(this.nozzleTipPosition);
+                    group.add(nozzleSphere);
+                }
+                
+                // Try to find the nozzle tip in the model by name
+                let nozzleFound = false;
+                gltf.scene.traverse((object) => {
+                    // Log all object names to help identify the nozzle
+                    if (object.name) {
+                        console.log(`[DEBUG] Found named object in model: "${object.name}" (${object.type})`);
+                    }
+                    
+                    // Look for an object named "nozzle" or "tip" or similar
+                    if (object.name && (object.name.toLowerCase().includes('nozzle') || 
+                                       object.name.toLowerCase().includes('tip') ||
+                                       object.name.toLowerCase().includes('barrel') ||
+                                       object.name.toLowerCase().includes('flame'))) {
+                        console.log('[DEBUG] Found potential nozzle object in model:', object.name);
+                        
+                        // Get world position of nozzle
+                        object.updateWorldMatrix(true, false);
+                        const worldPos = new THREE.Vector3();
+                        object.getWorldPosition(worldPos);
+                        
+                        // Convert to local position within our group
+                        group.updateWorldMatrix(true, false);
+                        const localPos = worldPos.clone();
+                        group.worldToLocal(localPos);
+                        
+                        this.nozzleTipPosition.copy(localPos);
+                        nozzleFound = true;
+                        
+                        // Log position for verification
+                        console.log('[DEBUG] Nozzle position set to:', 
+                                   this.nozzleTipPosition.x.toFixed(2),
+                                   this.nozzleTipPosition.y.toFixed(2),
+                                   this.nozzleTipPosition.z.toFixed(2));
+                    }
+                    
+                    // Set shadows for all meshes
+                    if (object.isMesh) {
+                        object.castShadow = true;
+                        object.visible = true; // Ensure visibility is turned on
+                        
+                        // Enhance materials for better lighting effects
+                        if (object.material) {
+                            this.enhanceMaterial(object.material);
+                            
+                            // Make sure materials are visible
+                            object.material.transparent = false;
+                            object.material.opacity = 1.0;
+                            object.material.visible = true;
+                            
+                            // Debug - log material properties
+                            console.log(`[DEBUG] Material for ${object.name}:`, 
+                                       object.material.type, 
+                                       'visible:', object.material.visible,
+                                       'transparent:', object.material.transparent);
+                        }
+                    }
+                });
+                
+                if (!nozzleFound) {
+                    console.log('[DEBUG] No nozzle found in model, using default position');
+                }
+                
+                // Update debug helpers if enabled
+                if (this.debug && this.debugSphere) {
+                    this.debugSphere.position.copy(this.nozzleTipPosition);
+                    if (this.debugLine) {
+                        // Update debug line
+                        const positions = this.debugLine.geometry.attributes.position.array;
+                        positions[0] = this.nozzleTipPosition.x;
+                        positions[1] = this.nozzleTipPosition.y;
+                        positions[2] = this.nozzleTipPosition.z;
+                        positions[3] = this.nozzleTipPosition.x;
+                        positions[4] = this.nozzleTipPosition.y;
+                        positions[5] = this.nozzleTipPosition.z - 0.5;
+                        this.debugLine.geometry.attributes.position.needsUpdate = true;
+                    }
+                }
+            },
+            (progress) => {
+                // Progress callback
+                const percentComplete = (progress.loaded / progress.total) * 100;
+                console.log(`[DEBUG] Loading flamethrower model: ${percentComplete.toFixed(2)}%`);
+            },
+            (error) => {
+                // Error callback - enhanced with more details
+                console.error('[DEBUG] Error loading flamethrower model:', error);
+                console.error('[DEBUG] Error message:', error.message);
+                console.error('[DEBUG] Attempted to load from path:', modelPath);
+                
+                // Log plugin and path information again
+                console.log('[DEBUG] Plugin settings available:', window.jackalopePlanetSettings ? 'YES' : 'NO');
+                if (window.jackalopePlanetSettings) {
+                    console.log('[DEBUG] Plugin URL:', window.jackalopePlanetSettings.pluginUrl);
+                }
+                
+                // Fall back to simple geometric model on error
+                console.log('[DEBUG] Falling back to simple geometric model');
+                this.createSimpleGeometricModel(group);
+            }
+        );
+    }
+    
+    // Helper method to find an object by name
+    findObjectByName(object, name) {
+        if (object.name === name) {
+            return object;
+        }
+        
+        for (let i = 0; i < object.children.length; i++) {
+            const found = this.findObjectByName(object.children[i], name);
+            if (found) {
+                return found;
+            }
+        }
+        
+        return null;
+    }
+    
+    // Fallback method to create a simple geometric model if GLB loading fails
+    createSimpleGeometricModel(group) {
         // Tank (cylinder)
         const tankGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.4, 16);
         const tankMaterial = new THREE.MeshStandardMaterial({ 
@@ -285,18 +610,69 @@ class Flamethrower extends HumanWeapon {
             nozzle.position.y,
             nozzle.position.z + 0.2
         );
+    }
+    
+    // Additional method to update model position and rotation
+    updateModelPosition() {
+        if (!this.model) return;
         
-        // Position for FPS view - dramatically repositioned
-        group.position.set(0.0, -0.1, -0.3); // Changed from (0.3, -0.3, -0.1)
-        
-        this.model = group;
-        
-        // Add to camera or player model
+        // Update position based on player state, camera position, etc.
         if (this.player.isFirstPerson && this.player.fpCamera) {
-            this.player.fpCamera.add(this.model);
-        } else if (this.player.model) {
-            this.player.model.add(this.model);
+            // First-person positioning - adjusted for better visibility
+            // Position more dramatically in front of camera
+            this.model.position.set(0.15, -0.15, -0.25); // Bring model closer, higher, and more central
+            
+            // Add subtle weapon bobbing for more realism
+            if (this.player.velocity && this.modelGroup) {
+                const time = Date.now() * 0.001; // Use seconds for smoother movement
+                const moveX = Math.sin(time * 2.0) * 0.01;
+                const moveY = Math.sin(time * 4.0) * 0.008;
+                
+                this.modelGroup.position.x = moveX;
+                this.modelGroup.position.y = moveY;
+            }
+            
+            // Periodically check model visibility
+            if (Math.random() < 0.01) { // Log only occasionally to avoid spam
+                console.log('[DEBUG] Model visibility check:');
+                console.log('- Model positioned at:', 
+                           this.model.position.x.toFixed(2),
+                           this.model.position.y.toFixed(2),
+                           this.model.position.z.toFixed(2));
+                
+                if (this.loadedModel) {
+                    // Check if model is in view
+                    const camera = this.player.fpCamera;
+                    const cameraDirection = new THREE.Vector3();
+                    camera.getWorldDirection(cameraDirection);
+                    
+                    const modelPosition = new THREE.Vector3();
+                    this.model.getWorldPosition(modelPosition);
+                    
+                    const cameraPosition = new THREE.Vector3();
+                    camera.getWorldPosition(cameraPosition);
+                    
+                    const toModel = new THREE.Vector3().subVectors(modelPosition, cameraPosition);
+                    const distance = toModel.length();
+                    toModel.normalize();
+                    
+                    const angle = cameraDirection.angleTo(toModel) * (180 / Math.PI);
+                    
+                    console.log('- Model is', distance.toFixed(2), 'units away at angle', angle.toFixed(2), 'degrees');
+                    console.log('- Model visible:', this.loadedModel.visible);
+                    console.log('- Model frustumCulled:', this.loadedModel.frustumCulled);
+                }
+            }
         }
+    }
+    
+    // Override update method to include model position updates
+    update(delta) {
+        // Use base update
+        super.update(delta);
+        
+        // Update model position
+        this.updateModelPosition();
     }
     
     createParticleSystem() {
@@ -541,6 +917,24 @@ class Flamethrower extends HumanWeapon {
         if (this.player && this.player.isFirstPerson && this.player.fpCamera) {
             // Use camera as the source
             const camera = this.player.fpCamera;
+            
+            // Log camera position and direction for debugging
+            if (Math.random() < 0.05) { // Only occasionally to avoid spam
+                const camPos = new THREE.Vector3();
+                camera.getWorldPosition(camPos);
+                console.log('[DEBUG] Camera position:', 
+                    camPos.x.toFixed(2), 
+                    camPos.y.toFixed(2), 
+                    camPos.z.toFixed(2));
+                
+                // Log weapon model position relative to camera
+                if (this.model) {
+                    console.log('[DEBUG] Weapon model position relative to camera:', 
+                        this.model.position.x.toFixed(2), 
+                        this.model.position.y.toFixed(2), 
+                        this.model.position.z.toFixed(2));
+                }
+            }
             
             // Get camera position
             camera.getWorldPosition(emissionPosition);
@@ -972,6 +1366,34 @@ class Flamethrower extends HumanWeapon {
             this.secondaryLights = null;
         }
         
+        // Clean up loaded GLB model
+        if (this.loadedModel) {
+            // Traverse the model to dispose of all geometries and materials
+            this.loadedModel.traverse((object) => {
+                if (object.isMesh) {
+                    if (object.geometry) {
+                        object.geometry.dispose();
+                    }
+                    
+                    // Handle material disposal
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(material => this.disposeMaterial(material));
+                        } else {
+                            this.disposeMaterial(object.material);
+                        }
+                    }
+                }
+            });
+            
+            // Remove from parent
+            if (this.loadedModel.parent) {
+                this.loadedModel.parent.remove(this.loadedModel);
+            }
+            
+            this.loadedModel = null;
+        }
+        
         // Clean up debug objects
         if (this.debugSphere) {
             if (this.debugSphere.parent) {
@@ -1029,6 +1451,22 @@ class Flamethrower extends HumanWeapon {
         
         // Reset particles
         this.particles = [];
+    }
+    
+    // Helper method to dispose of material and its textures
+    disposeMaterial(material) {
+        if (!material) return;
+        
+        // Dispose of textures
+        for (const propertyName in material) {
+            const property = material[propertyName];
+            if (property && property.isTexture) {
+                property.dispose();
+            }
+        }
+        
+        // Dispose of the material itself
+        material.dispose();
     }
     
     // Alternative implementation using custom shaders for particles
@@ -1308,7 +1746,7 @@ class Flamethrower extends HumanWeapon {
                     this.ambientGlowLight.intensity = this.isFiring ? 
                         this.ambientGlowIntensity * intensityFactor * 0.8 : // Slightly dimmer than main light
                         Math.max(0, this.ambientGlowLight.intensity - delta); // Slower fade out
-                        
+                    
                     if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
                         console.log('[DEBUG] Ambient glow intensity:', this.ambientGlowLight.intensity.toFixed(2),
                                    'distance:', this.ambientGlowLight.distance.toFixed(2));

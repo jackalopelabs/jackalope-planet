@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Loading Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.148.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.148.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            font-family: monospace;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow: auto;
+        }
+        #status {
+            color: orange;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>Model Loading Test</h2>
+        <div>Status: <span id="status">Testing...</span></div>
+        <h3>Log</h3>
+        <div id="log"></div>
+    </div>
+    <script>
+        // Logging function
+        function log(message) {
+            console.log(message);
+            const logElement = document.getElementById('log');
+            const line = document.createElement('div');
+            line.textContent = message;
+            logElement.appendChild(line);
+            
+            // Auto-scroll to bottom
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        // Set status
+        function setStatus(message, isError = false) {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.style.color = isError ? 'red' : 'lightgreen';
+        }
+        
+        // Initialize Three.js scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        // Add a light
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(1, 1, 1);
+        scene.add(light);
+        
+        // Add ambient light
+        const ambientLight = new THREE.AmbientLight(0x404040, 1);
+        scene.add(ambientLight);
+        
+        // Position camera
+        camera.position.z = 2;
+        
+        // Array of model paths to try
+        const modelPaths = [
+            './dist/models/weapons/flamethrower.glb',
+            './src/js/assets/models/weapons/flamethrower.glb',
+            './src/assets/models/weapons/flamethrower.glb',
+            './models/weapons/flamethrower.glb',
+            './flamethrower.glb'
+        ];
+        
+        let model = null;
+        let successfulPath = null;
+        
+        // Try to load each model path
+        function tryLoadingModels(index = 0) {
+            if (index >= modelPaths.length) {
+                setStatus('Failed to load model from any path', true);
+                log('All paths failed. Model could not be loaded.');
+                return;
+            }
+            
+            const path = modelPaths[index];
+            log(`Trying to load model from: ${path}`);
+            
+            // Test if file exists with a HEAD request
+            fetch(path, { method: 'HEAD' })
+                .then(response => {
+                    if (response.ok) {
+                        log(`File exists at: ${path}`);
+                        loadModel(path);
+                    } else {
+                        log(`File NOT found at: ${path}`);
+                        tryLoadingModels(index + 1);
+                    }
+                })
+                .catch(error => {
+                    log(`Error checking file at ${path}: ${error.message}`);
+                    tryLoadingModels(index + 1);
+                });
+        }
+        
+        // Load the model using the specified path
+        function loadModel(path) {
+            const loader = new THREE.GLTFLoader();
+            
+            loader.load(
+                path,
+                (gltf) => {
+                    // Success
+                    log(`Model loaded successfully from: ${path}`);
+                    successfulPath = path;
+                    setStatus(`Model loaded from: ${path}`);
+                    
+                    // Add model to scene
+                    model = gltf.scene;
+                    scene.add(model);
+                    
+                    // Center the model
+                    const box = new THREE.Box3().setFromObject(model);
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    
+                    // Normalize and position
+                    const maxSize = Math.max(size.x, size.y, size.z);
+                    model.scale.multiplyScalar(1.0 / maxSize);
+                    model.position.sub(center.multiplyScalar(1.0 / maxSize));
+                    
+                    // Log model details
+                    log(`Model contains ${countObjects(model)} objects`);
+                    listAllObjects(model);
+                },
+                (progress) => {
+                    // Progress
+                    const percent = Math.round((progress.loaded / progress.total) * 100);
+                    log(`Loading progress: ${percent}%`);
+                },
+                (error) => {
+                    // Error
+                    log(`Error loading model from ${path}: ${error.message}`);
+                    tryLoadingModels(modelPaths.indexOf(path) + 1);
+                }
+            );
+        }
+        
+        // Count all objects in the model
+        function countObjects(object) {
+            let count = 1;
+            object.children.forEach(child => {
+                count += countObjects(child);
+            });
+            return count;
+        }
+        
+        // List all named objects
+        function listAllObjects(object, depth = 0) {
+            const indent = '  '.repeat(depth);
+            const name = object.name || 'unnamed';
+            log(`${indent}- ${name} (${object.type})`);
+            
+            object.children.forEach(child => {
+                listAllObjects(child, depth + 1);
+            });
+        }
+        
+        // Start loading attempts
+        tryLoadingModels();
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate the model if it's loaded
+            if (model) {
+                model.rotation.y += 0.01;
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        animate();
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html> 

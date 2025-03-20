@@ -63,6 +63,23 @@ class Jackalope_Planet {
             JACKALOPE_PLANET_VERSION . '.' . time(),
             true
         );
+        
+        // Add plugin settings to JavaScript
+        wp_localize_script(
+            'jackalope-planet-script',
+            'jackalopePlanetSettings',
+            [
+                'pluginUrl' => JACKALOPE_PLANET_PLUGIN_URL,
+                'siteUrl' => site_url(),
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'version' => JACKALOPE_PLANET_VERSION,
+                'debug' => WP_DEBUG,
+                'assetsUrl' => JACKALOPE_PLANET_PLUGIN_URL . 'dist/',
+                'modelPaths' => [
+                    'flamethrower' => JACKALOPE_PLANET_PLUGIN_URL . 'dist/models/weapons/flamethrower.glb',
+                ]
+            ]
+        );
     }
     
     /**

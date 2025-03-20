@@ -19,6 +19,7 @@
     "author": "Bonsai",
     "license": "MIT",
     "dependencies": {
+        "glob": "^11.0.1",
         "three": "^0.150.1"
     },
     "devDependencies": {

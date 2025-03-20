@@ -1,8 +1,9 @@
 import { Game } from './core/Game';
 import '../css/jackalope-planet.css';
 
-const JACKALOPE_VERSION = 'modular-test';
+const JACKALOPE_VERSION = 'modular-202503191853';
 console.log(`Jackalope Planet ${JACKALOPE_VERSION} loaded`);
+console.log('🚀 THIS IS A TEST UPDATE TO VERIFY CHANGES');
 
 // Test helper - accessible via browser console
 window.testJackalope = {

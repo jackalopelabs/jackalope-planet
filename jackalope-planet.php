@@ -91,7 +91,7 @@ class Jackalope_Planet {
             
             <!-- Controls hint -->
             <div class="jackalope-planet-controls-hint">
-                <p>Click to play in game mode! Use WASD to move, mouse to look around, T to toggle between first-person and third-person, ESC to exit.</p>
+                <p>🎮 TEST UPDATE: Click to play the updated version! Use WASD to move, mouse to look around, T to toggle view, ESC to exit.</p>
             </div>
         </div>
         <?php

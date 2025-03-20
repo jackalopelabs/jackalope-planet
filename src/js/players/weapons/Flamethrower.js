@@ -395,7 +395,7 @@ class Flamethrower extends HumanWeapon {
             );
             
             // Set velocity in flame direction with random spread
-            const speed = 10 + Math.random() * 5;
+            const speed = 20 + Math.random() * 10; // Increased from 10+5 to 20+10 for more forward momentum
             particle.velocity.copy(this.flameDirection).normalize().multiplyScalar(speed);
             particle.velocity.add(spreadVec);
             
@@ -405,7 +405,7 @@ class Flamethrower extends HumanWeapon {
             
             // Set size and life
             particle.size = 1 + Math.random() * 2;
-            particle.maxLife = 1.0 + Math.random() * 0.5;
+            particle.maxLife = 1.5 + Math.random() * 1.0; // Increased from 1.0+0.5 to 1.5+1.0 for longer flame
             particle.life = particle.maxLife;
             
             // First particle debug
@@ -478,10 +478,10 @@ class Flamethrower extends HumanWeapon {
             particle.position.addScaledVector(particle.velocity, delta);
             
             // Add upward force for realism
-            particle.velocity.y += 5 * delta;
+            particle.velocity.y += 1 * delta; // Reduced from 5 to 1 to prevent immediate drop
             
             // Slow down
-            particle.velocity.multiplyScalar(0.95);
+            particle.velocity.multiplyScalar(0.97); // Changed from 0.95 to 0.97 for less drag
             
             // Calculate life ratio for fading
             const lifeRatio = particle.life / particle.maxLife;
@@ -690,10 +690,10 @@ class Flamethrower extends HumanWeapon {
             particle.position.addScaledVector(particle.velocity, delta);
             
             // Add upward force
-            particle.velocity.y += 5 * delta;
+            particle.velocity.y += 1 * delta; // Reduced from 5 to 1
             
             // Slow down
-            particle.velocity.multiplyScalar(0.95);
+            particle.velocity.multiplyScalar(0.97); // Changed from 0.95 to 0.97
             
             // Calculate life ratio
             const lifeRatio = particle.life / particle.maxLife;
@@ -834,7 +834,7 @@ class Flamethrower extends HumanWeapon {
             if (particle.life > 0) {
                 particle.life -= delta;
                 particle.position.addScaledVector(particle.velocity, delta);
-                particle.velocity.y += 5 * delta; // Rising effect
+                particle.velocity.y += 1 * delta; // Reduced from 5 to 1
                 
                 // Update position in buffer
                 const idx = i * 3;
@@ -851,14 +851,14 @@ class Flamethrower extends HumanWeapon {
                 particle.position.copy(nozzleTipWorld);
                 
                 // Set velocity in flame direction with some randomness
-                const speed = 10 + Math.random() * 5;
+                const speed = 20 + Math.random() * 10; // Increased from 10+5 to 20+10
                 particle.velocity.copy(direction).multiplyScalar(speed);
                 particle.velocity.x += (Math.random() - 0.5) * 2;
                 particle.velocity.y += (Math.random() - 0.5) * 2 + 0.5; // Slight upward bias
                 particle.velocity.z += (Math.random() - 0.5) * 2;
                 
                 // Set lifetime
-                particle.maxLife = 0.5 + Math.random() * 0.5;
+                particle.maxLife = 1.0 + Math.random() * 1.0; // Increased from 0.5+0.5 to 1.0+1.0
                 particle.life = particle.maxLife;
                 
                 activeParticles++;

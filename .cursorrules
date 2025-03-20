@@ -33,15 +33,23 @@ If you switch branches (e.g., from `main` to `modular` or vice versa) and don't 
 
 3. **Clear all WordPress caches**:
    ```bash
+   # From project root
    wp @development transient delete-all
    wp @development cache flush
    wp @development acorn optimize:clear
+   
+   # If @development alias doesn't work, use SSH directly
+   ssh bonsai.test "cd /srv/www/bonsai.so/current && wp transient delete-all && wp cache flush && wp acorn optimize:clear"
    ```
 
 4. **Deactivate and reactivate the plugin**:
    ```bash
+   # From project root
    wp @development plugin deactivate jackalope-planet
    wp @development plugin activate jackalope-planet
+   
+   # If @development alias doesn't work, use SSH directly
+   ssh bonsai.test "cd /srv/www/bonsai.so/current && wp plugin deactivate jackalope-planet && wp plugin activate jackalope-planet"
    ```
 
 5. **Hard refresh the browser**: 

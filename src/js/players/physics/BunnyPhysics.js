@@ -5,16 +5,16 @@ class BunnyPhysics extends BasePhysics {
     constructor(options = {}) {
         // Bunnies have lower gravity and higher jump
         super({
-            gravity: 7.5,
+            gravity: 25,
             frictionCoefficient: 0.05,
-            airResistance: 0.015,
+            airResistance: 0.03,
             maxVelocity: 12,
             ...options
         });
         
         // Bunny-specific physics properties
-        this.bounceCoefficient = options.bounceCoefficient || 0.3;
-        this.floatiness = options.floatiness || 0.8;
+        this.bounceCoefficient = options.bounceCoefficient || 0.2;
+        this.floatiness = options.floatiness || 1.2;
         this.groundLevel = 0.5; // Half height above ground
         
         // Terrain collision detection
@@ -85,8 +85,9 @@ class BunnyPhysics extends BasePhysics {
      * Apply physics to bunny player
      * @param {Player} player - The bunny player to apply physics to
      * @param {number} delta - Time since last frame in seconds
+     * @param {Object} input - Input state from InputManager
      */
-    apply(player, delta) {
+    apply(player, delta, input = {}) {
         if (!player.velocity) {
             player.velocity = new THREE.Vector3(0, 0, 0);
             player.isGrounded = true;
@@ -104,6 +105,15 @@ class BunnyPhysics extends BasePhysics {
             player.position.copy(player.model.position);
             player.isGrounded = true;
             player.velocity.y = 0;
+        }
+        
+        // Handle jumping when jump action is triggered and player is grounded
+        // Check both modern input format and legacy format
+        const shouldJump = (input.actions && input.actions.jump) || input.jump;
+        if (shouldJump && player.isGrounded) {
+            player.velocity.y = 4.0; // Lower jump height (was 5.0)
+            player.isGrounded = false;
+            console.log('Bunny hop!');
         }
         
         // Apply gravity with floatiness factor (bunnies fall slower)

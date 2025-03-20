@@ -293,15 +293,25 @@ class Flamethrower extends HumanWeapon {
             this.createSimpleGeometricModel(group);
         }
         
-        // Position for FPS view - careful positioning to ensure visibility
-        group.position.set(0, 0, 0); // Reset position - we'll set it properly in updateModelPosition
+        // Reset position - we'll set it properly when attaching to camera
+        group.position.set(0, 0, 0);
+        
+        // Reset rotation
+        group.rotation.set(0, 0, 0);
         
         this.model = group;
         
         // Add to camera or player model
         if (this.player.isFirstPerson && this.player.fpCamera) {
-            this.player.fpCamera.add(this.model);
-            console.log('[DEBUG] Added weapon model to first-person camera');
+            // Create a proper parent for the model
+            this.weaponContainer = new THREE.Group();
+            this.weaponContainer.position.set(0.3, -0.3, -1.5); // Position further from camera to prevent clipping
+            this.weaponContainer.add(this.model);
+            
+            // Add to the camera
+            this.player.fpCamera.add(this.weaponContainer);
+            
+            console.log('[DEBUG] Added weapon container to first-person camera');
             
             // Log camera and model relationship
             const camPos = new THREE.Vector3();
@@ -355,7 +365,7 @@ class Flamethrower extends HumanWeapon {
                 group.add(gltf.scene);
                 
                 // Adjust model scale and position
-                gltf.scene.scale.set(3.0, 3.0, 3.0); // Much larger scale
+                gltf.scene.scale.set(3.5, 3.5, 3.5); // Smaller scale to prevent camera clipping
                 gltf.scene.rotation.set(0, Math.PI, 0);
             },
             undefined,
@@ -390,7 +400,7 @@ class Flamethrower extends HumanWeapon {
                 group.add(gltf.scene);
                 
                 // Adjust model scale and position more dramatically for visibility testing
-                gltf.scene.scale.set(3.0, 3.0, 3.0); // Much larger scale for better visibility
+                gltf.scene.scale.set(3.5, 3.5, 3.5); // Smaller scale to prevent camera clipping
                 
                 // Get model size info for debugging only
                 const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -596,10 +606,19 @@ class Flamethrower extends HumanWeapon {
         
         // Update position based on player state, camera position, etc.
         if (this.player.isFirstPerson && this.player.fpCamera) {
-            // First-person positioning - adjusted for better visibility
-            // Position more dramatically in front of camera
-            this.model.position.set(0.25, -0.95, -0.45); // Adjusted to compensate for model center at y=1.04
-            this.model.rotation.set(0, Math.PI, 0); // Rotate to point forward
+            // If weapon container doesn't exist yet, create it
+            if (!this.weaponContainer) {
+                console.log('[DEBUG] Creating missing weapon container');
+                this.weaponContainer = new THREE.Group();
+                this.weaponContainer.position.set(0.3, -0.3, -1.5); // Move further from camera to prevent clipping
+                
+                // Re-parent the model
+                if (this.model.parent) {
+                    this.model.parent.remove(this.model);
+                }
+                this.weaponContainer.add(this.model);
+                this.player.fpCamera.add(this.weaponContainer);
+            }
             
             // Add subtle weapon bobbing for more realism
             if (this.player.velocity && this.modelGroup) {
@@ -611,13 +630,20 @@ class Flamethrower extends HumanWeapon {
                 this.modelGroup.position.y = moveY;
             }
             
+            // Now we only need to update the model's rotation, position is handled by the container
+            this.model.rotation.set(0, Math.PI, 0); // Keep the model pointed forward
+            
             // Periodically check model visibility
             if (Math.random() < 0.01) { // Log only occasionally to avoid spam
                 console.log('[DEBUG] Model visibility check:');
-                console.log('- Model positioned at:', 
-                           this.model.position.x.toFixed(2),
-                           this.model.position.y.toFixed(2),
-                           this.model.position.z.toFixed(2));
+                if (this.weaponContainer) {
+                    console.log('- Weapon container positioned at:', 
+                              this.weaponContainer.position.x.toFixed(2),
+                              this.weaponContainer.position.y.toFixed(2), 
+                              this.weaponContainer.position.z.toFixed(2));
+                } else {
+                    console.log('- NO weapon container!');
+                }
                 
                 if (this.loadedModel) {
                     // Check if model is in view
@@ -1330,6 +1356,14 @@ class Flamethrower extends HumanWeapon {
     
     cleanup() {
         super.cleanup();
+        
+        // Clean up weapon container
+        if (this.weaponContainer) {
+            if (this.weaponContainer.parent) {
+                this.weaponContainer.parent.remove(this.weaponContainer);
+            }
+            this.weaponContainer = null;
+        }
         
         // Clean up secondary lights
         if (this.secondaryLights) {

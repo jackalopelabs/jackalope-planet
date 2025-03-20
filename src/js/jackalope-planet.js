@@ -1,9 +1,52 @@
 import { Game } from './core/Game';
 import '../css/jackalope-planet.css';
 
+const JACKALOPE_VERSION = 'modular-test';
+console.log(`Jackalope Planet ${JACKALOPE_VERSION} loaded`);
+
+// Test helper - accessible via browser console
+window.testJackalope = {
+  version: JACKALOPE_VERSION,
+  games: [],
+  runTests: function() {
+    console.group('Jackalope Planet Tests');
+    console.log('Testing version:', this.version);
+    
+    // Test game instances
+    const containers = document.querySelectorAll('.jackalope-planet-canvas-container');
+    console.log('Game instances found:', containers.length);
+    
+    // Test current mode
+    const currentMode = window.currentMode || 'unknown';
+    console.log('Current mode:', currentMode);
+    
+    // Test rendering
+    containers.forEach(container => {
+      const renderer = container.querySelector('canvas');
+      if (renderer) {
+        console.log('Renderer active:', container.id);
+      } else {
+        console.warn('No renderer found in:', container.id);
+      }
+    });
+    
+    // Test game features based on branch
+    if (this.version.includes('modular')) {
+      console.log('Testing modular branch features...');
+      // Check for modular branch features
+      console.log('Player physics system available:', typeof this.games[0]?.player?.physics !== 'undefined');
+      console.log('Modular control system available:', typeof this.games[0]?.player?.controls !== 'undefined');
+    }
+    
+    console.groupEnd();
+    return 'Tests complete - check console for results';
+  }
+};
+
 // Initialize Jackalope Planet when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, initializing Jackalope Planet');
+    console.log('MODULAR BRANCH: Jackalope Planet initializing');
+    console.log('This is the modular branch version');
     
     // Find all jackalope planet containers
     const containers = document.querySelectorAll('.jackalope-planet-canvas-container');
@@ -17,6 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Initializing game in container: ${containerId}`);
             const game = new Game(containerId);
             games.push(game);
+            
+            // Add to test helper
+            window.testJackalope.games.push(game);
             
             // Add first-person cursor dot
             const fpCursor = document.createElement('div');

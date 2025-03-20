@@ -1,0 +1,181 @@
+# Jackalope Planet Development Guide
+
+## Switching Between Branches
+
+If you switch branches (e.g., from `main` to `modular` or vice versa) and don't see your changes reflected in WordPress, follow these steps:
+
+1. **Edit the plugin file to add cache busting**:
+   ```php
+   // In jackalope-planet.php, modify the register_assets method:
+   public function register_assets() {
+       wp_register_style(
+           'jackalope-planet-style',
+           JACKALOPE_PLANET_PLUGIN_URL . 'dist/style.css',
+           [],
+           JACKALOPE_PLANET_VERSION . '.' . time()  // Add timestamp for cache busting
+       );
+       
+       wp_register_script(
+           'jackalope-planet-script',
+           JACKALOPE_PLANET_PLUGIN_URL . 'dist/jackalope-planet.js',
+           [],
+           JACKALOPE_PLANET_VERSION . '.' . time(),  // Add timestamp for cache busting
+           true
+       );
+   }
+   ```
+
+2. **Rebuild assets**:
+   ```bash
+   npm install  # If switching to a branch with different dependencies
+   npm run build
+   ```
+
+3. **Clear all WordPress caches**:
+   ```bash
+   wp @development transient delete-all
+   wp @development cache flush
+   wp @development acorn optimize:clear
+   ```
+
+4. **Deactivate and reactivate the plugin**:
+   ```bash
+   wp @development plugin deactivate jackalope-planet
+   wp @development plugin activate jackalope-planet
+   ```
+
+5. **Hard refresh the browser**: 
+   - Chrome/Firefox: `Ctrl+Shift+R` or `Cmd+Shift+R` (Mac)
+   - Or clear browser cache in developer tools
+
+6. **Verify in browser console**:
+   - Open Developer Tools (F12)
+   - Check console for your custom log messages
+   - Look for: "MODULAR BRANCH: Jackalope Planet initializing" or similar
+
+## Test System for Major Revisions
+
+To ensure changes are properly implemented with each major revision and testing cycle, follow this structured testing approach:
+
+### 1. Setup Test Version Markers
+
+Add a version marker in your main JS file to verify the correct version is loaded:
+
+```javascript
+// In src/js/jackalope-planet.js:
+const JACKALOPE_VERSION = 'v1.0.0-modular'; // Update with each major revision
+console.log(`Jackalope Planet ${JACKALOPE_VERSION} loaded`);
+```
+
+### 2. Automated Test Script
+
+Create a test script in the plugin root:
+
+```bash
+#!/bin/bash
+# test-plugin.sh - Run before and after each major revision
+
+# 1. Check current branch
+BRANCH=$(git branch --show-current)
+echo "Testing branch: $BRANCH"
+
+# 2. Build assets
+npm run build
+
+# 3. Run lint checks if available
+if [ -f "package.json" ] && grep -q "lint" "package.json"; then
+  npm run lint
+fi
+
+# 4. Clear WP caches
+wp @development cache flush
+wp @development acorn optimize:clear
+
+# 5. Verify plugin activation
+PLUGIN_STATUS=$(wp @development plugin status jackalope-planet --format=json)
+echo "Plugin status: $PLUGIN_STATUS"
+
+# 6. Perform visual regression test if available
+if [ -f "visual-test.js" ]; then
+  node visual-test.js
+fi
+
+echo "Test complete. Remember to verify in browser!"
+```
+
+Make it executable:
+```bash
+chmod +x test-plugin.sh
+```
+
+### 3. Visual Feature Checklist
+
+Create a feature verification document to check before/after each revision:
+
+```md
+# Jackalope Planet Feature Checklist
+
+## Core Features
+- [ ] 3D planet renders properly
+- [ ] Controls work (WASD movement)
+- [ ] Mode switching works (first/third person)
+- [ ] Performance is acceptable (no frame drops)
+
+## New Features (modular branch)
+- [ ] Player physics system working
+- [ ] Weapon system functional
+- [ ] UI elements display correctly
+
+## Regression Tests
+- [ ] Check mobile compatibility
+- [ ] Test all shortcode parameters
+- [ ] Verify compatibility with theme
+```
+
+### 4. Browser Console Test Helper
+
+Add a test helper function to verify features via console:
+
+```javascript
+// In src/js/jackalope-planet.js:
+// Test helper - accessible via browser console
+window.testJackalope = {
+  version: JACKALOPE_VERSION,
+  runTests: function() {
+    console.group('Jackalope Planet Tests');
+    console.log('Testing version:', this.version);
+    
+    // Test game instances
+    const games = document.querySelectorAll('.jackalope-planet-canvas-container');
+    console.log('Game instances found:', games.length);
+    
+    // Test current mode
+    const mode = window.currentMode || 'unknown';
+    console.log('Current mode:', mode);
+    
+    // Test game features based on branch
+    if (this.version.includes('modular')) {
+      console.log('Testing modular branch features...');
+      // Add specific modular branch tests
+    }
+    
+    console.groupEnd();
+    return 'Tests complete';
+  }
+};
+
+console.log('Jackalope Planet test helper available. Run window.testJackalope.runTests() to verify.');
+```
+
+## Common Issues
+
+- **Plugin shows old code**: Make sure you've rebuilt assets after switching branches
+- **CSS not updating**: Add a distinctive visual change to verify updates
+- **JS not running correctly**: Check browser console for errors
+- **Persistent caching**: Use time() in the version string as shown above
+
+## Development Tips
+
+- Add unique console.log messages to verify you're using the correct branch
+- Modify the plugin name temporarily to confirm WordPress is loading your version
+- Make simple visual changes to test updates are working 

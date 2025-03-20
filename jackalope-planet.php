@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: Jackalope Planet
+ * Plugin Name: Jackalope Planet (Modular Branch)
  * Plugin URI: https://bonsai.so
  * Description: A 3D interactive Jackalope Planet experience built with Three.js, usable via shortcode [jackalope-planet].
  * Version: 1.0.0
@@ -53,14 +53,14 @@ class Jackalope_Planet {
             'jackalope-planet-style',
             JACKALOPE_PLANET_PLUGIN_URL . 'dist/style.css',
             [],
-            JACKALOPE_PLANET_VERSION
+            JACKALOPE_PLANET_VERSION . '.' . time()
         );
         
         wp_register_script(
             'jackalope-planet-script',
             JACKALOPE_PLANET_PLUGIN_URL . 'dist/jackalope-planet.js',
             [],
-            JACKALOPE_PLANET_VERSION,
+            JACKALOPE_PLANET_VERSION . '.' . time(),
             true
         );
     }

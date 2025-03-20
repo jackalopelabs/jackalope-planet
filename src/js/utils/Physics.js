@@ -6,8 +6,8 @@ class Physics {
         this.timestep = 1/60; // 60 fps physics update rate
         
         // Shadow parameters for enhanced visual contrast
-        this.shadowDarkness = 0.85; // Controls shadow darkness (0-1)
-        this.shadowSharpness = 0.92; // Controls shadow edge sharpness (0-1)
+        this.shadowDarkness = 0.98; // Controls shadow darkness (0-1), increased from 0.92 to 0.98
+        this.shadowSharpness = 0.98; // Controls shadow edge sharpness (0-1), increased from 0.95 to 0.98
     }
     
     // Simple collision detection between two objects with bounding spheres

@@ -30,12 +30,12 @@ class World {
     }
     
     addLights() {
-        // Use a very dim ambient light for the night scene - reduced intensity
-        const ambientLight = new THREE.AmbientLight(0x111122, 0.15); // Darker color, reduced from 0.3 to 0.15
+        // Use an extremely dim ambient light for the night scene - drastically reduced intensity
+        const ambientLight = new THREE.AmbientLight(0x040408, 0.03); // Further darkened color and reduced from 0.07 to 0.03
         this.scene.add(ambientLight);
         
         // Create moonlight (directional light with blue tint) - increase contrast
-        this.moonLight = new THREE.DirectionalLight(0xaabbff, 1.2); // Increased intensity from 1.0 to 1.2
+        this.moonLight = new THREE.DirectionalLight(0xaabbff, 1.6); // Increased intensity from 1.4 to 1.6
         this.moonLight.position.set(15, 30, 20);
         this.moonLight.castShadow = true;
         
@@ -100,18 +100,18 @@ class World {
     }
     
     createGround() {
-        // Create a grid helper for the ground - darker
+        // Create a grid helper for the ground - almost black
         const gridSize = 100;
         const gridDivisions = 100;
-        const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x333344, 0x111122); // Darker colors
+        const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x080808, 0x020202); // Near-black colors for almost invisible grid
         gridHelper.position.y = 0.01; // Slightly above the ground to prevent z-fighting
         this.scene.add(gridHelper);
         
         // Simple flat ground plane with darker materials for night scene
         const groundGeometry = new THREE.PlaneGeometry(100, 100);
         const groundMaterial = new THREE.MeshStandardMaterial({
-            color: 0x223344, // Darker color from 0x334455 to 0x223344
-            roughness: 0.85, // Increased from 0.8 to 0.85
+            color: 0x0a0e12, // Further darkened from 0x151a22 to 0x0a0e12
+            roughness: 0.95, // Increased from 0.9 to 0.95
             metalness: 0.15, // Reduced from 0.2 to 0.15
             transparent: true,
             opacity: 0.9, // Increased from 0.8 to 0.9

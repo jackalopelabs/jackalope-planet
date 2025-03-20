@@ -302,6 +302,13 @@ class HumanPlayer extends Player {
             } else if (this.weapon) {
                 // Make sure the weapon is properly attached
                 this.weapon.attachToPlayer();
+                
+                // Remove placeholder visuals if they exist and we have a real weapon
+                if (this.fpVisuals && this.fpCamera) {
+                    console.log('Removing placeholder visuals since proper weapon exists');
+                    this.fpCamera.remove(this.fpVisuals);
+                    this.fpVisuals = null;
+                }
             }
         } else {
             // Stop firing when switching to third-person
@@ -464,6 +471,12 @@ class HumanPlayer extends Player {
     createFirstPersonVisuals() {
         // Only create if they don't exist and we're in first-person mode
         if (!this.isFirstPerson || !this.fpCamera || this.fpVisuals) return;
+        
+        // Skip creating the box visual if we already have a proper weapon
+        if (this.weapon) {
+            console.log('Skipping placeholder visuals since proper weapon exists');
+            return;
+        }
         
         // Create a simple arm/weapon model visible in first-person
         const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.5);

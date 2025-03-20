@@ -388,6 +388,21 @@ class Flamethrower extends HumanWeapon {
                 // Success callback
                 console.log('[DEBUG] Flamethrower model loaded successfully from:', modelPath);
                 
+                // Clear any existing children (like placeholder geometry) from the group
+                while (group.children.length > 0) {
+                    const child = group.children[0];
+                    group.remove(child);
+                    // Dispose of geometry and material to free memory
+                    if (child.geometry) child.geometry.dispose();
+                    if (child.material) {
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(mat => mat.dispose());
+                        } else {
+                            child.material.dispose();
+                        }
+                    }
+                }
+                
                 // Add the loaded model to our group
                 this.loadedModel = gltf.scene;
                 

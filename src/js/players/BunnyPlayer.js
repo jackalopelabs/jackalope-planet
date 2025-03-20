@@ -37,11 +37,27 @@ class BunnyPlayer extends Player {
         this.model = this.game.assetLoader.createBunnyModel();
         this.model.position.set(0, 0.5, 0); // Half height above ground
         
-        // Enable shadows for the bunny model
+        // Enable shadows for the bunny model and change color to white/light gray
         this.model.traverse(node => {
             if (node instanceof THREE.Mesh) {
                 node.castShadow = true;
                 node.receiveShadow = true;
+                
+                // Change the bunny color to white/light gray
+                if (node.material) {
+                    // Check if it's the main body material (avoid changing eyes, nose, etc.)
+                    if (node.material.name && node.material.name.includes('Body')) {
+                        node.material = node.material.clone(); // Clone to avoid affecting other instances
+                        node.material.color.set(0xf0f0f0); // Very light gray, almost white
+                    } else if (node.material.name && node.material.name.includes('Fur')) {
+                        node.material = node.material.clone();
+                        node.material.color.set(0xffffff); // Pure white for fur parts
+                    } else if (!node.material.name || (!node.material.name.includes('Eye') && !node.material.name.includes('Nose'))) {
+                        // For any unnamed materials or those not explicitly eyes/nose
+                        node.material = node.material.clone();
+                        node.material.color.set(0xe8e8e8); // Light gray for other parts
+                    }
+                }
             }
         });
         

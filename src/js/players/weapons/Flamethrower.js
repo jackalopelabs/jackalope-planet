@@ -25,7 +25,85 @@ window.debugFlamethrower = function() {
         console.log('Particle system frustumCulled:', ft.particleSystem.frustumCulled);
     }
     
+    // Add lighting debug info
+    if (ft.flameLight) {
+        console.log('------ FLAME LIGHT DEBUG ------');
+        console.log('Flame light intensity:', ft.flameLight.intensity);
+        console.log('Flame light distance:', ft.flameLight.distance);
+        console.log('Flame light position:', 
+                   ft.flameLight.position.x.toFixed(2),
+                   ft.flameLight.position.y.toFixed(2),
+                   ft.flameLight.position.z.toFixed(2));
+        console.log('Flame light casts shadow:', ft.flameLight.castShadow);
+        console.log('Flame light visible:', ft.flameLight.visible);
+        console.log('Flame light parent:', ft.flameLight.parent ? ft.flameLight.parent.type : 'none');
+    } else {
+        console.log('Flame light: NOT CREATED');
+    }
+    
+    if (ft.ambientGlowLight) {
+        console.log('------ AMBIENT GLOW LIGHT DEBUG ------');
+        console.log('Ambient glow light intensity:', ft.ambientGlowLight.intensity);
+        console.log('Ambient glow light distance:', ft.ambientGlowLight.distance);
+        console.log('Ambient glow light position:', 
+                   ft.ambientGlowLight.position.x.toFixed(2),
+                   ft.ambientGlowLight.position.y.toFixed(2),
+                   ft.ambientGlowLight.position.z.toFixed(2));
+        console.log('Ambient glow light visible:', ft.ambientGlowLight.visible);
+    } else {
+        console.log('Ambient glow light: NOT CREATED');
+    }
+    
+    // Debug helpers
+    console.log('------ DEBUG VISUALIZERS ------');
+    console.log('Light debug sphere:', ft.lightDebugSphere ? 'created' : 'none');
+    console.log('Glow debug sphere:', ft.glowDebugSphere ? 'created' : 'none');
+    
     return 'Debug info printed';
+};
+
+// Add a function to analyze scene materials
+window.analyzeSceneMaterials = function() {
+    if (!flamethrowerInstance || !flamethrowerInstance.scene) {
+        console.log('[DEBUG] No flamethrower instance or scene found');
+        return;
+    }
+    
+    const scene = flamethrowerInstance.scene;
+    const materialTypes = {};
+    let objectCount = 0;
+    let shadowReceivingCount = 0;
+    
+    scene.traverse(object => {
+        if (object.isMesh) {
+            objectCount++;
+            
+            if (object.receiveShadow) {
+                shadowReceivingCount++;
+            }
+            
+            if (object.material) {
+                const matType = object.material.type;
+                materialTypes[matType] = (materialTypes[matType] || 0) + 1;
+                
+                console.log(`Object: ${object.name || 'unnamed'} - Material: ${matType} - Receives Shadows: ${object.receiveShadow}`);
+                
+                // Log detailed material properties
+                if (matType === 'MeshStandardMaterial') {
+                    console.log(`  Roughness: ${object.material.roughness}, Metalness: ${object.material.metalness}`);
+                } else if (matType === 'MeshPhongMaterial') {
+                    console.log(`  Shininess: ${object.material.shininess}, Specular: ${object.material.specular ? object.material.specular.getHexString() : 'none'}`);
+                }
+            }
+        }
+    });
+    
+    console.log('------ SCENE MATERIAL ANALYSIS ------');
+    console.log(`Total objects: ${objectCount}`);
+    console.log(`Shadow receiving objects: ${shadowReceivingCount}`);
+    console.log('Material types:', materialTypes);
+    
+    return 'Scene material analysis complete';
 };
 
 class Flamethrower extends HumanWeapon {
@@ -51,6 +129,9 @@ class Flamethrower extends HumanWeapon {
             console.error('[DEBUG] Scene is null in Flamethrower constructor');
         }
         
+        // Initialize effects array
+        this.effects = this.effects || [];
+        
         // Always initialize particles array
         this.particles = [];
         
@@ -59,6 +140,20 @@ class Flamethrower extends HumanWeapon {
         this.flameLength = 25;
         this.flameWidth = 2;
         this.particleSystem = null;
+        
+        // Dynamic lighting for flames
+        this.flameLight = null;
+        this.flameLightIntensity = 5.0; // Increased from 2.0 to 5.0 for stronger effect
+        this.flameLightDistance = 30;   // Increased from 15 to 30 for wider radius
+        this.flameLightColor = 0xff5500; // Orange color for light
+        
+        // Ambient glow light (softer, wider radius)
+        this.ambientGlowLight = null;
+        this.ambientGlowIntensity = 2.0; // Increased from 0.7 to 2.0 for stronger ambient effect
+        this.ambientGlowDistance = 40;   // Increased from 25 to 40 for much wider radius
+        this.ambientGlowColor = 0xff8844; // Softer orange color
+        
+        this.useDynamicLighting = true; // Toggle for dynamic lighting feature
         
         // Debug mode
         this.debug = true;
@@ -72,20 +167,37 @@ class Flamethrower extends HumanWeapon {
         this.useCustomShaders = false;
         
         // Store the current flame origin and direction
-        this.flameOrigin = new THREE.Vector3();
+        this.flameOrigin = new THREE.Vector3(0, 0, 0);
         this.flameDirection = new THREE.Vector3(0, 0, 1);
         
         // Flame colors
         this.flameColors = [
-            new THREE.Color(0xff5500), // Orange
-            new THREE.Color(0xff9900), // Light orange
-            new THREE.Color(0xff0000), // Red
-            new THREE.Color(0xffff00)  // Yellow
+            new THREE.Color(0xff5500).multiplyScalar(1.5), // Bright orange with intensity
+            new THREE.Color(0xff9900).multiplyScalar(1.5), // Bright light orange with intensity
+            new THREE.Color(0xff0000).multiplyScalar(1.3), // Bright red with intensity
+            new THREE.Color(0xffff00).multiplyScalar(1.8)  // Bright yellow with intensity
         ];
     }
     
     init(options) {
         console.log('[DEBUG] Flamethrower init starting');
+        
+        // Verify the scene is available
+        if (!this.scene) {
+            console.error('[DEBUG] Scene is null in Flamethrower init');
+            if (this.player && this.player.scene) {
+                console.log('[DEBUG] Using player.scene as fallback');
+                this.scene = this.player.scene;
+            } else if (this.player && this.player.game && this.player.game.scene) {
+                console.log('[DEBUG] Using player.game.scene as fallback');
+                this.scene = this.player.game.scene;
+            } else {
+                console.error('[DEBUG] No scene available, dynamic lighting disabled');
+                this.useDynamicLighting = false;
+            }
+        } else {
+            console.log('[DEBUG] Scene is valid in Flamethrower init');
+        }
         
         // Create weapon model
         this.createWeaponModel();
@@ -101,6 +213,26 @@ class Flamethrower extends HumanWeapon {
         } else {
             console.log('[DEBUG] Using standard particle system implementation');
             this.createParticleSystem();
+        }
+        
+        // Log debug info about lighting setup
+        console.log('[DEBUG] Lighting setup stats:');
+        console.log('[DEBUG] - useDynamicLighting:', this.useDynamicLighting);
+        console.log('[DEBUG] - scene available:', this.scene ? 'yes' : 'no');
+        
+        // Prepare scene objects to receive lighting
+        if (this.scene && this.useDynamicLighting) {
+            this.enhanceSceneObjects();
+        }
+        
+        // Create dynamic light for the flame
+        if (this.useDynamicLighting) {
+            console.log('[DEBUG] Creating flame lights now');
+            this.createFlameLight();
+            console.log('[DEBUG] After createFlameLight - flameLight created:', this.flameLight ? 'yes' : 'no', 
+                        'ambientGlowLight created:', this.ambientGlowLight ? 'yes' : 'no');
+        } else {
+            console.log('[DEBUG] Dynamic lighting is disabled, skipping light creation');
         }
         
         // Create debug helpers if enabled
@@ -250,11 +382,12 @@ class Flamethrower extends HumanWeapon {
             32, 32, 32   // outer circle
         );
         
-        // Add color stops
+        // Add color stops with enhanced glow
         gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');   // center: white
-        gradient.addColorStop(0.3, 'rgba(255, 255, 0, 1)');   // yellow
-        gradient.addColorStop(0.6, 'rgba(255, 120, 0, 0.9)'); // orange
-        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');       // edge: transparent red
+        gradient.addColorStop(0.2, 'rgba(255, 240, 120, 1)');  // bright yellow
+        gradient.addColorStop(0.4, 'rgba(255, 160, 50, 0.9)'); // bright orange
+        gradient.addColorStop(0.7, 'rgba(255, 80, 10, 0.6)');  // red-orange with transparency
+        gradient.addColorStop(1, 'rgba(255, 50, 0, 0)');      // edge: transparent red
         
         // Fill with gradient
         context.fillStyle = gradient;
@@ -284,6 +417,36 @@ class Flamethrower extends HumanWeapon {
         const lineMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
         this.debugLine = new THREE.Line(lineGeometry, lineMaterial);
         
+        // Create visible light spheres to show light positions
+        if (this.useDynamicLighting) {
+            // Helper for main flame light
+            const lightSphereGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+            const lightSphereMaterial = new THREE.MeshBasicMaterial({ 
+                color: this.flameLightColor,
+                transparent: true,
+                opacity: 0.6
+            });
+            this.lightDebugSphere = new THREE.Mesh(lightSphereGeometry, lightSphereMaterial);
+            
+            // Helper for ambient glow light
+            const glowSphereGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const glowSphereMaterial = new THREE.MeshBasicMaterial({ 
+                color: this.ambientGlowColor,
+                transparent: true,
+                opacity: 0.4
+            });
+            this.glowDebugSphere = new THREE.Mesh(glowSphereGeometry, glowSphereMaterial);
+            
+            // Add to scene
+            if (this.scene) {
+                this.scene.add(this.lightDebugSphere);
+                this.scene.add(this.glowDebugSphere);
+                this.effects.push(this.lightDebugSphere);
+                this.effects.push(this.glowDebugSphere);
+                console.log('[DEBUG] Added light visualization helpers to scene');
+            }
+        }
+        
         if (this.model) {
             this.model.add(this.debugSphere);
             this.model.add(this.debugLine);
@@ -300,6 +463,14 @@ class Flamethrower extends HumanWeapon {
         // Use base class for cooldown check
         if (!super.fire()) {
             return false;
+        }
+        
+        // Debug scene status
+        if (this.debug) {
+            console.log('[DEBUG] Flamethrower fired! Scene has', this.scene ? 'valid scene' : 'NO SCENE');
+            if (this.scene) {
+                console.log('[DEBUG] Scene children:', this.scene.children.length, 'Effects:', this.effects.length);
+            }
         }
         
         // Emit particles
@@ -340,6 +511,12 @@ class Flamethrower extends HumanWeapon {
                         this.createParticleSystem2();
                     }
                     console.log('[DEBUG] Particle system recreation attempt complete');
+                    
+                    // Also recreate flame lights if they don't exist but should
+                    if (this.useDynamicLighting && (!this.flameLight || !this.ambientGlowLight)) {
+                        console.log('[DEBUG] Attempting to recreate flame lights...');
+                        this.createFlameLight();
+                    }
                     
                     // If still not ready, log a final warning
                     if (!this.particleSystem || !this.particles.length) {
@@ -384,6 +561,33 @@ class Flamethrower extends HumanWeapon {
             this.flameOrigin.copy(emissionPosition);
             this.flameDirection.copy(emissionDirection);
             
+            // Create lights if they don't exist but should
+            if (this.useDynamicLighting && (!this.flameLight || !this.ambientGlowLight)) {
+                console.log('[DEBUG] Lights missing but dynamic lighting enabled, creating now');
+                this.createFlameLight();
+            }
+            
+            // Update flame light position
+            if (this.flameLight && this.useDynamicLighting) {
+                // Position the light at the emission point
+                this.flameLight.position.copy(emissionPosition);
+                
+                // Add a bit of offset in the direction of firing for better lighting effect
+                const lightOffset = emissionDirection.clone().multiplyScalar(2);
+                this.flameLight.position.add(lightOffset);
+                
+                // Force the light to update
+                this.flameLight.updateMatrix();
+                this.flameLight.updateMatrixWorld();
+                
+                // Also update ambient light if it exists
+                if (this.ambientGlowLight) {
+                    this.ambientGlowLight.position.copy(emissionPosition);
+                    this.ambientGlowLight.updateMatrix();
+                    this.ambientGlowLight.updateMatrixWorld();
+                }
+            }
+            
             if (this.debug) {
                 console.log('[DEBUG] First-person flame direction:', 
                     this.flameDirection.x.toFixed(2), 
@@ -404,6 +608,27 @@ class Flamethrower extends HumanWeapon {
             
             // Get direction from player model
             this.player.model.getWorldDirection(this.flameDirection);
+            
+            // Update flame light position
+            if (this.flameLight && this.useDynamicLighting) {
+                // Position the light at the nozzle tip
+                this.flameLight.position.copy(nozzleTipWorld);
+                
+                // Add a bit of offset in the direction of firing for better lighting effect
+                const lightOffset = this.flameDirection.clone().multiplyScalar(2);
+                this.flameLight.position.add(lightOffset);
+                
+                // Force the light to update
+                this.flameLight.updateMatrix();
+                this.flameLight.updateMatrixWorld();
+                
+                // Also update ambient light if it exists
+                if (this.ambientGlowLight) {
+                    this.ambientGlowLight.position.copy(nozzleTipWorld);
+                    this.ambientGlowLight.updateMatrix();
+                    this.ambientGlowLight.updateMatrixWorld();
+                }
+            }
             
             if (this.debug) {
                 console.log('[DEBUG] Third-person flame direction:', 
@@ -507,6 +732,7 @@ class Flamethrower extends HumanWeapon {
         
         // Update each particle
         let activeParticles = 0;
+        let averageParticleDistance = 0;
         
         for (let i = 0; i < this.particleCount; i++) {
             const particle = this.particles[i];
@@ -527,6 +753,11 @@ class Flamethrower extends HumanWeapon {
             
             // Slow down
             particle.velocity.multiplyScalar(0.97); // Changed from 0.95 to 0.97 for less drag
+            
+            // Track the average particle distance for light position
+            if (this.flameLight) {
+                averageParticleDistance += particle.position.distanceTo(this.flameOrigin);
+            }
             
             // Calculate life ratio for fading
             const lifeRatio = particle.life / particle.maxLife;
@@ -559,6 +790,86 @@ class Flamethrower extends HumanWeapon {
         this.particleSystem.geometry.attributes.color.needsUpdate = true;
         this.particleSystem.geometry.attributes.size.needsUpdate = true;
         
+        // Update flame light based on active particles
+        if (this.flameLight && this.useDynamicLighting && activeParticles > 0) {
+            // Calculate light intensity based on number of active particles
+            const intensityFactor = Math.min(1.0, activeParticles / 50); // 50 particles = 100% intensity
+            this.flameLight.intensity = this.isFiring ? 
+                this.flameLightIntensity * intensityFactor : 
+                Math.max(0, this.flameLight.intensity - delta * 2); // Fade out when not firing
+            
+            // Make the light flicker slightly for more realistic fire effect
+            if (this.isFiring) {
+                const flickerAmount = (Math.random() - 0.5) * 0.3; // Random flicker +/- 15%
+                this.flameLight.intensity *= (1 + flickerAmount);
+                
+                // Slightly adjust light color for flicker effect
+                const hue = (Math.random() > 0.7) ? 0.05 : 0; // Occasionally shift hue
+                const colorFactor = 1.0 + (Math.random() - 0.5) * 0.1; // +/- 5% color variation
+                this.flameLight.color.setHSL(hue, 1.0, 0.5 * colorFactor);
+                
+                if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
+                    console.log('[DEBUG] Flame light updated - intensity:', this.flameLight.intensity.toFixed(2), 
+                                'color:', this.flameLight.color.getHexString());
+                }
+            }
+            
+            // If we have an average particle distance, adjust the light position
+            if (activeParticles > 10 && averageParticleDistance > 0) {
+                // Calculate average distance
+                averageParticleDistance /= activeParticles;
+                
+                // Adjust light position to be partway along the flame's path
+                const adjustedPosition = this.flameDirection.clone()
+                    .normalize()
+                    .multiplyScalar(averageParticleDistance * 0.4); // Position light 40% down the flame path
+                
+                this.flameLight.position.copy(this.flameOrigin).add(adjustedPosition);
+                
+                if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
+                    console.log('[DEBUG] Flame light position:', 
+                                this.flameLight.position.x.toFixed(2),
+                                this.flameLight.position.y.toFixed(2),
+                                this.flameLight.position.z.toFixed(2));
+                }
+                
+                // Update debug sphere position if it exists
+                if (this.lightDebugSphere) {
+                    this.lightDebugSphere.position.copy(this.flameLight.position);
+                    this.lightDebugSphere.visible = this.isFiring;
+                }
+                
+                // Update ambient glow light position to follow main light but stay a bit closer to the player
+                if (this.ambientGlowLight) {
+                    // Position the ambient glow light closer to the player for better illumination
+                    const ambientPos = this.flameDirection.clone()
+                        .normalize()
+                        .multiplyScalar(averageParticleDistance * 0.2); // Position glow light 20% down the flame path
+                    
+                    this.ambientGlowLight.position.copy(this.flameOrigin).add(ambientPos);
+                    
+                    // Update debug sphere for glow light
+                    if (this.glowDebugSphere) {
+                        this.glowDebugSphere.position.copy(this.ambientGlowLight.position);
+                        this.glowDebugSphere.visible = this.isFiring;
+                    }
+                    
+                    // Update ambient glow intensity too, but with smoother transitions
+                    this.ambientGlowLight.intensity = this.isFiring ? 
+                        this.ambientGlowIntensity * intensityFactor * 0.8 : // Slightly dimmer than main light
+                        Math.max(0, this.ambientGlowLight.intensity - delta); // Slower fade out
+                        
+                    if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
+                        console.log('[DEBUG] Ambient glow intensity:', this.ambientGlowLight.intensity.toFixed(2));
+                    }
+                }
+            }
+        } else if (this.flameLight) {
+            console.log('[DEBUG] Flame light conditions not met:', 
+                        this.useDynamicLighting ? 'Dynamic lighting on' : 'Dynamic lighting off',
+                        'Active particles:', activeParticles);
+        }
+        
         if (this.debug && this.isFiring) {
             console.log(`Active particles: ${activeParticles}`);
         }
@@ -567,6 +878,29 @@ class Flamethrower extends HumanWeapon {
     startFire() {
         this.isFiring = true;
         
+        // Create lights if they don't exist but should
+        if (this.useDynamicLighting && (!this.flameLight || !this.ambientGlowLight)) {
+            console.log('[DEBUG] Creating missing flame lights in startFire');
+            this.createFlameLight();
+        }
+        
+        // Enable flame light when firing
+        if (this.flameLight && this.useDynamicLighting) {
+            this.flameLight.intensity = this.flameLightIntensity;
+            console.log('[DEBUG] Flame light enabled with intensity:', this.flameLightIntensity);
+        } else {
+            console.log('[DEBUG] Flame light not available:', this.flameLight ? 'Light exists' : 'No light', 
+                         this.useDynamicLighting ? 'Dynamic lighting on' : 'Dynamic lighting off');
+        }
+        
+        // Enable ambient glow light
+        if (this.ambientGlowLight && this.useDynamicLighting) {
+            this.ambientGlowLight.intensity = this.ambientGlowIntensity;
+            console.log('[DEBUG] Ambient glow light enabled with intensity:', this.ambientGlowIntensity);
+        } else {
+            console.log('[DEBUG] Ambient glow light not available:', this.ambientGlowLight ? 'Light exists' : 'No light');
+        }
+        
         if (this.debug) {
             console.log('Flamethrower: Started firing');
         }
@@ -574,6 +908,16 @@ class Flamethrower extends HumanWeapon {
     
     stopFire() {
         this.isFiring = false;
+        
+        // Disable flame light when not firing
+        if (this.flameLight && this.useDynamicLighting) {
+            this.flameLight.intensity = 0;
+        }
+        
+        // Disable ambient glow light
+        if (this.ambientGlowLight && this.useDynamicLighting) {
+            this.ambientGlowLight.intensity = 0;
+        }
         
         if (this.debug) {
             console.log('Flamethrower: Stopped firing');
@@ -601,6 +945,41 @@ class Flamethrower extends HumanWeapon {
                 this.debugLine.material.dispose();
             }
             this.debugLine = null;
+        }
+        
+        // Clean up light debug spheres
+        if (this.lightDebugSphere) {
+            if (this.lightDebugSphere.parent) {
+                this.lightDebugSphere.parent.remove(this.lightDebugSphere);
+            }
+            this.lightDebugSphere.geometry.dispose();
+            this.lightDebugSphere.material.dispose();
+            this.lightDebugSphere = null;
+        }
+        
+        if (this.glowDebugSphere) {
+            if (this.glowDebugSphere.parent) {
+                this.glowDebugSphere.parent.remove(this.glowDebugSphere);
+            }
+            this.glowDebugSphere.geometry.dispose();
+            this.glowDebugSphere.material.dispose();
+            this.glowDebugSphere = null;
+        }
+        
+        // Clean up flame light
+        if (this.flameLight) {
+            if (this.flameLight.parent) {
+                this.flameLight.parent.remove(this.flameLight);
+            }
+            this.flameLight = null;
+        }
+        
+        // Clean up ambient glow light
+        if (this.ambientGlowLight) {
+            if (this.ambientGlowLight.parent) {
+                this.ambientGlowLight.parent.remove(this.ambientGlowLight);
+            }
+            this.ambientGlowLight = null;
         }
         
         // Reset particles
@@ -653,7 +1032,7 @@ class Flamethrower extends HumanWeapon {
         // Create texture for particles
         const texture = this.createFlameTexture();
         
-        // Vertex shader
+        // Enhanced vertex shader with glow effect
         const vertexShader = `
             attribute float size;
             attribute float lifetime;
@@ -667,12 +1046,12 @@ class Flamethrower extends HumanWeapon {
                 vColor = color;
                 
                 vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-                gl_PointSize = size * (300.0 / -mvPosition.z);
+                gl_PointSize = size * (350.0 / -mvPosition.z); // Increased from 300 to 350 for larger particles
                 gl_Position = projectionMatrix * mvPosition;
             }
         `;
         
-        // Fragment shader
+        // Enhanced fragment shader with higher intensity glow
         const fragmentShader = `
             uniform sampler2D diffuseTexture;
             
@@ -683,7 +1062,15 @@ class Flamethrower extends HumanWeapon {
                 if (vLifetime <= 0.0) discard;
                 
                 vec4 texColor = texture2D(diffuseTexture, gl_PointCoord);
-                gl_FragColor = vec4(vColor * texColor.rgb, texColor.a * min(vLifetime * 2.0, 1.0));
+                
+                // Boost brightness for emissive glow effect
+                vec3 glowColor = vColor * 1.5; // Increased brightness by 50%
+                
+                // Apply additional glow effect based on lifetime
+                glowColor += vec3(0.2, 0.05, 0.0) * vLifetime; // Add orange-ish highlight
+                
+                // Final color with alpha
+                gl_FragColor = vec4(glowColor, texColor.a * min(vLifetime * 2.0, 1.0));
             }
         `;
         
@@ -730,6 +1117,7 @@ class Flamethrower extends HumanWeapon {
         const lifeTimes = this.particleSystem.geometry.attributes.lifetime.array;
         
         let activeParticles = 0;
+        let averageParticleDistance = 0;
         
         for (let i = 0; i < this.particleCount; i++) {
             const particle = this.particles[i];
@@ -749,6 +1137,11 @@ class Flamethrower extends HumanWeapon {
             
             // Slow down
             particle.velocity.multiplyScalar(0.97); // Changed from 0.95 to 0.97
+            
+            // Track the average particle distance for light position
+            if (this.flameLight) {
+                averageParticleDistance += particle.position.distanceTo(this.flameOrigin);
+            }
             
             // Calculate life ratio
             const lifeRatio = particle.life / particle.maxLife;
@@ -785,6 +1178,86 @@ class Flamethrower extends HumanWeapon {
         this.particleSystem.geometry.attributes.size.needsUpdate = true;
         this.particleSystem.geometry.attributes.lifetime.needsUpdate = true;
         
+        // Update flame light based on active particles - same as standard effect
+        if (this.flameLight && this.useDynamicLighting && activeParticles > 0) {
+            // Calculate light intensity based on number of active particles
+            const intensityFactor = Math.min(1.0, activeParticles / 50); // 50 particles = 100% intensity
+            this.flameLight.intensity = this.isFiring ? 
+                this.flameLightIntensity * intensityFactor : 
+                Math.max(0, this.flameLight.intensity - delta * 2); // Fade out when not firing
+            
+            // Make the light flicker slightly for more realistic fire effect
+            if (this.isFiring) {
+                const flickerAmount = (Math.random() - 0.5) * 0.3; // Random flicker +/- 15%
+                this.flameLight.intensity *= (1 + flickerAmount);
+                
+                // Slightly adjust light color for flicker effect
+                const hue = (Math.random() > 0.7) ? 0.05 : 0; // Occasionally shift hue
+                const colorFactor = 1.0 + (Math.random() - 0.5) * 0.1; // +/- 5% color variation
+                this.flameLight.color.setHSL(hue, 1.0, 0.5 * colorFactor);
+                
+                if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
+                    console.log('[DEBUG] Flame light updated - intensity:', this.flameLight.intensity.toFixed(2), 
+                                'color:', this.flameLight.color.getHexString());
+                }
+            }
+            
+            // If we have an average particle distance, adjust the light position
+            if (activeParticles > 10 && averageParticleDistance > 0) {
+                // Calculate average distance
+                averageParticleDistance /= activeParticles;
+                
+                // Adjust light position to be partway along the flame's path
+                const adjustedPosition = this.flameDirection.clone()
+                    .normalize()
+                    .multiplyScalar(averageParticleDistance * 0.4); // Position light 40% down the flame path
+                
+                this.flameLight.position.copy(this.flameOrigin).add(adjustedPosition);
+                
+                if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
+                    console.log('[DEBUG] Flame light position:', 
+                                this.flameLight.position.x.toFixed(2),
+                                this.flameLight.position.y.toFixed(2),
+                                this.flameLight.position.z.toFixed(2));
+                }
+                
+                // Update debug sphere position if it exists
+                if (this.lightDebugSphere) {
+                    this.lightDebugSphere.position.copy(this.flameLight.position);
+                    this.lightDebugSphere.visible = this.isFiring;
+                }
+                
+                // Update ambient glow light position to follow main light but stay a bit closer to the player
+                if (this.ambientGlowLight) {
+                    // Position the ambient glow light closer to the player for better illumination
+                    const ambientPos = this.flameDirection.clone()
+                        .normalize()
+                        .multiplyScalar(averageParticleDistance * 0.2); // Position glow light 20% down the flame path
+                    
+                    this.ambientGlowLight.position.copy(this.flameOrigin).add(ambientPos);
+                    
+                    // Update debug sphere for glow light
+                    if (this.glowDebugSphere) {
+                        this.glowDebugSphere.position.copy(this.ambientGlowLight.position);
+                        this.glowDebugSphere.visible = this.isFiring;
+                    }
+                    
+                    // Update ambient glow intensity too, but with smoother transitions
+                    this.ambientGlowLight.intensity = this.isFiring ? 
+                        this.ambientGlowIntensity * intensityFactor * 0.8 : // Slightly dimmer than main light
+                        Math.max(0, this.ambientGlowLight.intensity - delta); // Slower fade out
+                        
+                    if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
+                        console.log('[DEBUG] Ambient glow intensity:', this.ambientGlowLight.intensity.toFixed(2));
+                    }
+                }
+            }
+        } else if (this.flameLight) {
+            console.log('[DEBUG] Flame light conditions not met:', 
+                        this.useDynamicLighting ? 'Dynamic lighting on' : 'Dynamic lighting off',
+                        'Active particles:', activeParticles);
+        }
+        
         if (this.debug && this.isFiring) {
             console.log('[DEBUG] Active custom shader particles:', activeParticles);
         }
@@ -807,15 +1280,19 @@ class Flamethrower extends HumanWeapon {
             const positionAttribute = new THREE.Float32BufferAttribute(vertices, 3);
             geometry.setAttribute('position', positionAttribute);
             
-            // Create a solid orange material
+            // Create enhanced texture for glow effect
+            const texture = this.createFlameTexture();
+            
+            // Create a solid orange material with enhanced glow
             const material = new THREE.PointsMaterial({
-                size: 5.0,
-                color: 0xff5500,
+                size: 7.0,          // Increased from 5.0 to 7.0 for larger particles
+                color: 0xff7700,    // Brighter orange color
                 transparent: true,
-                opacity: 0.8,
+                opacity: 0.9,       // Increased from 0.8 to 0.9 for better visibility
                 sizeAttenuation: true,
                 depthWrite: false,
-                blending: THREE.AdditiveBlending
+                blending: THREE.AdditiveBlending,
+                map: texture        // Use our enhanced texture
             });
             
             // Create points system
@@ -828,11 +1305,31 @@ class Flamethrower extends HumanWeapon {
                 this.particles.push({
                     position: new THREE.Vector3(),
                     velocity: new THREE.Vector3(),
-                    color: new THREE.Color(1, 0.5, 0),
-                    size: 5.0,
+                    color: new THREE.Color(1, 0.7, 0.3), // Brighter orange-yellow color
+                    size: 7.0,
                     life: 0,
                     maxLife: 0
                 });
+            }
+            
+            // If we're using lighting, add an emergency light
+            if (this.useDynamicLighting && !this.flameLight) {
+                // Create a point light for the flame with higher intensity for emergency mode
+                this.flameLight = new THREE.PointLight(
+                    0xff5500,
+                    0, // Start with zero intensity when not firing
+                    this.flameLightDistance || 15
+                );
+                
+                // Set light properties
+                this.flameLight.castShadow = true;
+                
+                // Add to scene
+                if (this.scene) {
+                    this.scene.add(this.flameLight);
+                    this.effects.push(this.flameLight);
+                    console.log('[DEBUG] Emergency flame light added to scene');
+                }
             }
             
             // Add to scene
@@ -900,6 +1397,7 @@ class Flamethrower extends HumanWeapon {
         
         // Update each particle
         let activeParticles = 0;
+        let averageParticleDistance = 0;
         
         for (let i = 0; i < this.particles.length; i++) {
             const particle = this.particles[i];
@@ -917,6 +1415,9 @@ class Flamethrower extends HumanWeapon {
                 positions[idx + 2] = particle.position.z;
                 
                 activeParticles++;
+                
+                // Track average distance for light position
+                averageParticleDistance += particle.position.distanceTo(emissionPosition);
             }
             
             // Emit new particles if firing
@@ -942,10 +1443,215 @@ class Flamethrower extends HumanWeapon {
         // Update the geometry
         this.particleSystem.geometry.attributes.position.needsUpdate = true;
         
+        // Update flame light
+        if (this.flameLight && this.useDynamicLighting) {
+            // Base intensity on active particles
+            const intensityFactor = Math.min(1.0, activeParticles / 20); // 20 particles = full intensity for emergency
+            this.flameLight.intensity = this.isFiring ? 
+                this.flameLightIntensity * 1.5 * intensityFactor : // Higher intensity for emergency
+                Math.max(0, this.flameLight.intensity - delta * 2);
+            
+            // Update light position
+            if (activeParticles > 0) {
+                // Position the light in front of the emission point
+                const lightPosition = direction.clone().multiplyScalar(3);
+                this.flameLight.position.copy(emissionPosition).add(lightPosition);
+                
+                // Add flicker
+                const flickerAmount = (Math.random() - 0.5) * 0.4; // More intense flicker
+                this.flameLight.intensity *= (1 + flickerAmount);
+                
+                // Occasionally change color for "emergency" effect
+                if (Math.random() > 0.9) {
+                    const emergencyColor = Math.random() > 0.5 ? 0xff3300 : 0xff7700;
+                    this.flameLight.color.set(emergencyColor);
+                }
+            }
+        }
+        
         if (this.debug && this.isFiring) {
             console.log(`[DEBUG] Active emergency particles: ${activeParticles}`);
         }
     }
+    
+    createFlameLight() {
+        console.log('[DEBUG] Creating flame light with color:', this.flameLightColor, 'and distance:', this.flameLightDistance);
+        
+        // Double-check scene is available
+        if (!this.scene) {
+            console.error('[DEBUG] Cannot create flame light: scene is still null');
+            if (this.player && this.player.scene) {
+                console.log('[DEBUG] Using player.scene fallback for light creation');
+                this.scene = this.player.scene;
+            } else if (this.player && this.player.game && this.player.game.scene) {
+                console.log('[DEBUG] Using player.game.scene fallback for light creation');
+                this.scene = this.player.game.scene;
+            } else {
+                console.error('[DEBUG] No scene available for light creation, aborting');
+                return;
+            }
+        }
+        
+        try {
+            // Create a point light for the flame
+            this.flameLight = new THREE.PointLight(
+                this.flameLightColor,
+                0, // Start with zero intensity when not firing
+                this.flameLightDistance,
+                1.0 // Add quadratic decay for more realistic falloff
+            );
+            
+            // Set light properties
+            this.flameLight.castShadow = true;
+            this.flameLight.decay = 1.5; // Add light decay for more realistic falloff
+            
+            // Configure shadow properties (higher resolution for better quality)
+            this.flameLight.shadow.mapSize.width = 1024;  // Increased from 512
+            this.flameLight.shadow.mapSize.height = 1024; // Increased from 512
+            this.flameLight.shadow.camera.near = 0.1;
+            this.flameLight.shadow.camera.far = this.flameLightDistance;
+            this.flameLight.shadow.bias = -0.005; // Adjust bias to prevent shadow acne
+            
+            // Position the light at the origin initially (will be updated during firing)
+            this.flameLight.position.copy(this.flameOrigin);
+            
+            console.log('[DEBUG] Flame light created successfully:', this.flameLight.uuid);
+            
+            // Add to scene
+            if (this.scene) {
+                this.scene.add(this.flameLight);
+                if (!this.effects) {
+                    console.error('[DEBUG] Effects array is undefined, initializing');
+                    this.effects = [];
+                }
+                this.effects.push(this.flameLight);
+                
+                // Debug scene materials to see if they can receive shadows
+                console.log('[DEBUG] Checking scene materials for light interaction:');
+                let shadingObjects = 0;
+                let receivingShadowObjects = 0;
+                let castingShadowObjects = 0;
+                
+                this.scene.traverse(object => {
+                    if (object.isMesh) {
+                        shadingObjects++;
+                        
+                        if (object.receiveShadow) {
+                            receivingShadowObjects++;
+                        }
+                        
+                        if (object.castShadow) {
+                            castingShadowObjects++;
+                        }
+                        
+                        // Log material properties for the first few objects
+                        if (shadingObjects <= 5 && object.material) {
+                            console.log(`[DEBUG] Object material [${object.name || 'unnamed'}]:`, 
+                                'type:', object.material.type,
+                                'receiveShadow:', object.receiveShadow,
+                                'castShadow:', object.castShadow);
+                        }
+                    }
+                });
+                
+                console.log(`[DEBUG] Scene contains ${shadingObjects} meshes, ${receivingShadowObjects} receive shadows, ${castingShadowObjects} cast shadows`);
+                console.log('[DEBUG] Flame light added to scene. Scene children:', this.scene.children.length);
+            } else {
+                console.error('[DEBUG] Cannot add flame light: scene is null');
+            }
+            
+            // Create the ambient glow light (softer, wider radius)
+            try {
+                console.log('[DEBUG] Creating ambient glow light with color:', this.ambientGlowColor, 'and distance:', this.ambientGlowDistance);
+                this.ambientGlowLight = new THREE.PointLight(
+                    this.ambientGlowColor,
+                    0, // Start with zero intensity when not firing
+                    this.ambientGlowDistance,
+                    1.0 // Add quadratic decay for more realistic falloff
+                );
+                
+                // Don't cast shadows from ambient glow (better performance)
+                this.ambientGlowLight.castShadow = false;
+                this.ambientGlowLight.decay = 1.0; // Less decay than main flame light
+                
+                // Position at same point initially
+                this.ambientGlowLight.position.copy(this.flameOrigin);
+                
+                // Add to scene
+                if (this.scene) {
+                    this.scene.add(this.ambientGlowLight);
+                    if (!this.effects) {
+                        console.error('[DEBUG] Effects array is undefined, initializing');
+                        this.effects = [];
+                    }
+                    this.effects.push(this.ambientGlowLight);
+                    console.log('[DEBUG] Ambient glow light added to scene. Total effects:', this.effects.length);
+                } else {
+                    console.error('[DEBUG] Cannot add ambient glow light: scene is null');
+                }
+            } catch (error) {
+                console.error('[DEBUG] Error creating ambient glow light:', error);
+            }
+        } catch (error) {
+            console.error('[DEBUG] Error creating flame light:', error);
+        }
+        
+        // Final confirmation of light creation
+        console.log('[DEBUG] Light creation complete -', 
+                   'Flame light:', this.flameLight ? 'created' : 'failed',
+                   'Ambient glow:', this.ambientGlowLight ? 'created' : 'failed');
+    }
+    
+    // New method to enhance scene objects for better lighting
+    enhanceSceneObjects() {
+        console.log('[DEBUG] Enhancing scene objects for better light reception');
+        let enhancedCount = 0;
+        
+        // Traverse the scene to find all objects that should receive light
+        this.scene.traverse(object => {
+            if (object.isMesh) {
+                // Enable shadow receiving on all meshes
+                object.receiveShadow = true;
+                
+                // For any object with a material, enhance it to work better with dynamic lighting
+                if (object.material) {
+                    // If it's an array of materials, enhance each one
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(mat => this.enhanceMaterial(mat));
+                    } else {
+                        this.enhanceMaterial(object.material);
+                    }
+                    enhancedCount++;
+                }
+            }
+        });
+        
+        console.log(`[DEBUG] Enhanced ${enhancedCount} objects to receive lighting properly`);
+    }
+    
+    // Helper method to enhance individual materials
+    enhanceMaterial(material) {
+        if (!material) return;
+        
+        // Skip materials that don't respond to light
+        if (material.type === 'MeshBasicMaterial') return;
+        
+        // Adjust material properties for better light reception
+        material.needsUpdate = true;
+        
+        // For standard materials, ensure they have reflective properties
+        if (material.type === 'MeshStandardMaterial' || material.type === 'MeshPhysicalMaterial') {
+            // Only adjust if values are at extremes that would prevent light interaction
+            if (material.roughness > 0.95) material.roughness = 0.9;
+            if (material.metalness < 0.05) material.metalness = 0.1; // Small amount of metalness helps with highlights
+        }
+        
+        // For phong/lambert materials
+        if (material.type === 'MeshPhongMaterial' || material.type === 'MeshLambertMaterial') {
+            material.shininess = Math.max(material.shininess || 0, 10);
+            material.specular = material.specular || new THREE.Color(0x111111);
+        }
+    }
 }
 
-export { Flamethrower }; 
+export { Flamethrower };

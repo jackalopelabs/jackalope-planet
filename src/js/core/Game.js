@@ -77,12 +77,22 @@ export class Game {
         );
         this.camera.position.set(0, 5, 5);
         
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            powerPreference: 'high-performance' // Request high performance GPU
+        });
         this.renderer.setSize(container.clientWidth, container.clientHeight);
         
-        // Enable shadow maps for the renderer
+        // Enable shadow maps for the renderer with higher quality
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
+        this.renderer.physicallyCorrectLights = true; // Use physically correct lighting model
+        this.renderer.outputEncoding = THREE.sRGBEncoding; // Correct output encoding for better colors
+        
+        // Set pixel ratio for better rendering on high-DPI displays (but limit for performance)
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        
+        console.log('[DEBUG] Renderer initialized with shadows:', this.renderer.shadowMap.enabled);
         
         container.appendChild(this.renderer.domElement);
     }

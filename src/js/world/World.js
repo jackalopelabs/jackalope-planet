@@ -121,6 +121,11 @@ class World {
         ground.rotation.x = -Math.PI / 2; // Lay flat on XZ plane
         ground.position.y = 0;
         ground.receiveShadow = true;
+        
+        // Mark as terrain collider for physics detection
+        ground.name = 'ground';
+        ground.userData.isTerrainCollider = true;
+        
         this.scene.add(ground);
     }
     
@@ -161,13 +166,18 @@ class World {
             
             const hill = new THREE.Mesh(hillGeometry, hillMaterial);
             
-            // Position and rotate
-            hill.position.set(x, height / 2, z);
-            hill.rotation.y = Math.random() * Math.PI; // Random rotation
+            // Position and rotate properly for hills coming out of the ground
+            // Do NOT flip the cone - keep the pointy side up
+            hill.position.set(x, height / 2, z); // Half the height will be underground
+            hill.rotation.y = Math.random() * Math.PI; // Random rotation around Y axis
             
             // Enable shadow casting and receiving
             hill.castShadow = true;
             hill.receiveShadow = true;
+            
+            // Mark this object as a terrain collider for physics detection
+            hill.name = `hill_${i}`;
+            hill.userData.isTerrainCollider = true;
             
             // Add to scene
             this.scene.add(hill);

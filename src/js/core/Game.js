@@ -137,6 +137,11 @@ export class Game {
                     }
                 });
                 
+                // Initialize physics with scene access for terrain detection
+                if (this.player.physics && typeof this.player.physics.setScene === 'function') {
+                    this.player.physics.setScene(this.scene);
+                }
+                
                 // Make sure first-person mode stays active (prevent auto-toggle)
                 if (this.player.fpCamera) {
                     // Delay slightly to ensure everything is ready
@@ -149,11 +154,18 @@ export class Game {
                 }
             } else {
                 console.log('Creating third-person player');
+                
+                // Create the bunny player (default is third-person)
                 this.player = new BunnyPlayer(this, {
                     physics: { gravity: 7.5 },
                     movement: { movementSpeed: 7 },
                     controls: { sensitivity: 0.0025 }
                 });
+                
+                // Initialize physics with scene access for terrain detection
+                if (this.player.physics && typeof this.player.physics.setScene === 'function') {
+                    this.player.physics.setScene(this.scene);
+                }
             }
             
             console.log('Player created:', this.gameMode);
@@ -201,6 +213,11 @@ export class Game {
                 
                 // Create new player with the toggled mode
                 this.createNewPlayer();
+                
+                // Initialize physics with scene access for terrain detection
+                if (this.player && this.player.physics && typeof this.player.physics.setScene === 'function') {
+                    this.player.physics.setScene(this.scene);
+                }
                 
                 // If switching to first-person, need to request pointer lock
                 if (this.gameMode === 'first_person' && this.player) {

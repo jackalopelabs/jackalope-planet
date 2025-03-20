@@ -16,6 +16,69 @@ class BunnyPhysics extends BasePhysics {
         this.bounceCoefficient = options.bounceCoefficient || 0.3;
         this.floatiness = options.floatiness || 0.8;
         this.groundLevel = 0.5; // Half height above ground
+        
+        // Terrain collision detection
+        this.raycaster = new THREE.Raycaster();
+        this.downDirection = new THREE.Vector3(0, -1, 0);
+        this.terrainObjects = [];
+        this.scene = null;
+    }
+    
+    /**
+     * Set the scene for terrain collision detection
+     * @param {THREE.Scene} scene - The scene containing terrain objects
+     */
+    setScene(scene) {
+        this.scene = scene;
+        
+        // Find terrain objects
+        if (this.scene) {
+            this.findTerrainObjects();
+        }
+    }
+    
+    /**
+     * Find objects marked as terrain colliders in the scene
+     */
+    findTerrainObjects() {
+        this.terrainObjects = [];
+        
+        this.scene.traverse((object) => {
+            // Only collect objects that are specifically marked as terrain colliders
+            if (object.isMesh && object.userData && object.userData.isTerrainCollider) {
+                this.terrainObjects.push(object);
+            }
+        });
+        
+        console.log(`Found ${this.terrainObjects.length} terrain colliders for bunny physics`);
+    }
+    
+    /**
+     * Get the terrain height at a specific position
+     * @param {THREE.Vector3} position - The position to check
+     * @returns {number} The terrain height at that position
+     */
+    getTerrainHeight(position) {
+        if (this.terrainObjects.length === 0) {
+            return 0; // Default ground level if no terrain objects
+        }
+        
+        // Create ray starting point above the position
+        const rayStart = new THREE.Vector3(position.x, 20, position.z); // Start high above
+        
+        // Cast ray downward
+        this.raycaster.set(rayStart, this.downDirection);
+        
+        // Check for intersections with terrain objects
+        const intersects = this.raycaster.intersectObjects(this.terrainObjects);
+        
+        // If we found an intersection, return its height
+        if (intersects.length > 0) {
+            return intersects[0].point.y;
+        }
+        
+        // No intersection found, return default ground level
+        return 0;
     }
 
     /**
@@ -29,9 +92,15 @@ class BunnyPhysics extends BasePhysics {
             player.isGrounded = true;
         }
         
-        // Fix position if below ground
-        if (player.model && player.model.position.y < this.groundLevel) {
-            player.model.position.y = this.groundLevel;
+        // Get terrain height at current position
+        const terrainHeight = this.getTerrainHeight(player.model?.position || player.position);
+        
+        // Calculate minimum height including the player's ground offset
+        const minHeight = terrainHeight + this.groundLevel;
+        
+        // Fix position if below terrain
+        if (player.model && player.model.position.y < minHeight) {
+            player.model.position.y = minHeight;
             player.position.copy(player.model.position);
             player.isGrounded = true;
             player.velocity.y = 0;
@@ -65,9 +134,12 @@ class BunnyPhysics extends BasePhysics {
         const verticalMovement = new THREE.Vector3(0, player.velocity.y * delta, 0);
         player.movePlayer(verticalMovement);
         
-        // Basic ground collision
-        if (player.model && player.model.position.y < this.groundLevel) {
-            player.model.position.y = this.groundLevel;
+        // Check terrain collision after movement
+        const newTerrainHeight = this.getTerrainHeight(player.model?.position || player.position);
+        const newMinHeight = newTerrainHeight + this.groundLevel;
+        
+        if (player.model && player.model.position.y < newMinHeight) {
+            player.model.position.y = newMinHeight;
             player.position.copy(player.model.position);
             
             // Bounce when landing with velocity
@@ -77,7 +149,7 @@ class BunnyPhysics extends BasePhysics {
                 player.velocity.y = 0;
                 player.isGrounded = true;
             }
-        } else if (player.model && player.model.position.y > this.groundLevel + 0.1) {
+        } else if (player.model && player.model.position.y > newMinHeight + 0.1) {
             // If we're above ground level, we're not grounded
             player.isGrounded = false;
         }

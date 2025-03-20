@@ -51,6 +51,13 @@ class InputManager {
             this.handleMouseUp(event);
         });
         
+        // Prevent spacebar from scrolling the page
+        window.addEventListener('keydown', (event) => {
+            if (event.code === 'Space') {
+                event.preventDefault();
+            }
+        });
+        
         // Key press event listeners for movement and mode switching
         document.addEventListener('keydown', (event) => this.handleKey(event, true));
         document.addEventListener('keyup', (event) => this.handleKey(event, false));

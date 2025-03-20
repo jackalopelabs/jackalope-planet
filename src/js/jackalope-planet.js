@@ -1,9 +1,9 @@
 import { Game } from './core/Game';
 import '../css/jackalope-planet.css';
 
-const JACKALOPE_VERSION = 'modular-202503191853';
+const JACKALOPE_VERSION = 'modular-202503191854';
 console.log(`Jackalope Planet ${JACKALOPE_VERSION} loaded`);
-console.log('🚀 THIS IS A TEST UPDATE TO VERIFY CHANGES');
+console.log('🚀 THIS IS A TEST UPDATE TO VERIFY CHANGES - MULTIPLE PLAYER SUPPORT');
 
 // Test helper - accessible via browser console
 window.testJackalope = {
@@ -85,7 +85,11 @@ document.addEventListener('DOMContentLoaded', () => {
     containers.forEach(container => {
         const infoText = document.createElement('div');
         infoText.className = 'jackalope-controls-info';
-        infoText.innerHTML = 'Press <strong>T</strong> to toggle first/third person view';
+        infoText.innerHTML = `
+            <div>Press <strong>M</strong> to toggle first/third person view</div>
+            <div>Press <strong>T</strong> to create a new character</div>
+            <div>Press <strong>1-9</strong> to switch between characters</div>
+        `;
         infoText.style.position = 'absolute';
         infoText.style.bottom = '10px';
         infoText.style.left = '10px';
@@ -98,12 +102,31 @@ document.addEventListener('DOMContentLoaded', () => {
         container.appendChild(infoText);
     });
     
-    // Global key handler for view toggle (T key)
+    // Global key handler for mode switching (M key), player creation (T key), and player switching (1-9 keys)
     window.addEventListener('keydown', (event) => {
-        if ((event.key === 't' || event.key === 'T') && !isProcessingKeyPress) {
-            // Determine target mode (opposite of current)
-            const targetMode = currentMode === 'third_person' ? 'first_person' : 'third_person';
-            console.log(`Global T key pressed, switching player mode to ${targetMode}`);
+        console.log('Key pressed:', event.key);
+        
+        // Handle player switching (1-9 keys)
+        if (/^[1-9]$/.test(event.key)) {
+            const playerIndex = parseInt(event.key) - 1;
+            games.forEach(game => {
+                if (game.players && game.players[playerIndex]) {
+                    // Switch active player
+                    game.activePlayer = game.players[playerIndex];
+                    console.log(`Switched to player ${playerIndex + 1}`);
+                    
+                    // Update camera if needed
+                    if (game.activePlayer.fpCamera) {
+                        game.setActiveCamera(game.activePlayer.fpCamera);
+                    }
+                }
+            });
+            return;
+        }
+        
+        // Handle mode switching (M key)
+        if ((event.key === 'm' || event.key === 'M') && !isProcessingKeyPress) {
+            console.log('M key pressed, switching game mode');
             
             // Set the flag to prevent multiple rapid keypresses
             isProcessingKeyPress = true;
@@ -114,35 +137,73 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Update tracked mode
-            currentMode = targetMode;
+            currentMode = currentMode === 'first_person' ? 'third_person' : 'first_person';
             
             // Toggle FP cursor visibility
             document.querySelectorAll('.first-person-cursor').forEach(cursor => {
-                cursor.style.display = targetMode === 'first_person' ? 'block' : 'none';
+                cursor.style.display = currentMode === 'first_person' ? 'block' : 'none';
             });
             
-            // Wait a brief moment to ensure pointer lock is released
+            // Switch mode in each game instance
+            games.forEach(game => {
+                if (typeof game.switchPlayerMode === 'function') {
+                    game.switchPlayerMode();
+                }
+            });
+            
+            // Reset the key press flag after a reasonable time
             setTimeout(() => {
-                games.forEach(game => {
-                    if (typeof game.switchPlayerMode === 'function') {
-                        // Get mode before switch
-                        const currentGameMode = game.gameMode;
+                isProcessingKeyPress = false;
+            }, 1000);
+            return;
+        }
+        
+        // Handle creating additional player (T key)
+        if ((event.key === 't' || event.key === 'T') && !isProcessingKeyPress) {
+            console.log('T key pressed, creating additional player');
+            
+            // Set the flag to prevent multiple rapid keypresses
+            isProcessingKeyPress = true;
+            
+            // First exit pointer lock if active
+            if (document.pointerLockElement && document.exitPointerLock) {
+                document.exitPointerLock();
+            }
+            
+            // Create additional player in each game instance
+            games.forEach(game => {
+                console.log('Creating additional player in game instance');
+                if (typeof game.createAdditionalPlayer === 'function') {
+                    const newPlayer = game.createAdditionalPlayer();
+                    if (newPlayer) {
+                        console.log('Additional player created successfully');
                         
-                        // Only switch if needed
-                        if (currentGameMode !== targetMode) {
-                            const newMode = game.switchPlayerMode();
-                            console.log(`Game switched to ${newMode} mode`);
-                        } else {
-                            console.log(`Game already in ${currentGameMode} mode, no switch needed`);
+                        // Position the new player slightly offset from existing players
+                        const offset = (game.players.length - 1) * 2; // 2 units between each player
+                        newPlayer.position.set(offset, 5, offset);
+                        console.log('Positioned new player at:', offset, 5, offset);
+                        
+                        // Set this as the active player
+                        game.activePlayer = newPlayer;
+                        console.log('Set new player as active');
+                        
+                        // Update camera if needed
+                        if (newPlayer.fpCamera) {
+                            game.setActiveCamera(newPlayer.fpCamera);
+                            console.log('Updated camera to new player');
                         }
+                    } else {
+                        console.error('Failed to create additional player');
                     }
-                });
-                
-                // Reset the key press flag after a reasonable time
-                setTimeout(() => {
-                    isProcessingKeyPress = false;
-                }, 1000);
-            }, 100);
+                } else {
+                    console.error('createAdditionalPlayer function not found on game instance');
+                }
+            });
+            
+            // Reset the key press flag after a reasonable time
+            setTimeout(() => {
+                isProcessingKeyPress = false;
+            }, 1000);
         }
     });
     
@@ -156,4 +217,4 @@ document.addEventListener('DOMContentLoaded', () => {
             cursor.style.display = (isLocked && inFirstPerson) ? 'block' : 'none';
         });
     });
-}); 
+});

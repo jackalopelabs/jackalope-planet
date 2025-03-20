@@ -148,11 +148,40 @@ class InputManager {
             this.keys.d = pressed;
             this.moveRight = pressed;
         } else if (key === 'KeyT' && pressed) {
-            // Toggle between player modes (for testing purposes)
-            const newMode = this.game.switchPlayerMode();
-            console.log('Switched to player mode:', newMode);
+            // Create a new player in the current mode
+            console.log('T key pressed, creating new player');
+            if (this.game.createAdditionalPlayer) {
+                const newPlayer = this.game.createAdditionalPlayer();
+                if (newPlayer) {
+                    console.log('New player created successfully');
+                } else {
+                    console.error('Failed to create new player');
+                }
+            } else {
+                console.error('createAdditionalPlayer method not found on game');
+            }
         } else if (key === 'Escape' && pressed) {
             this.showInstructions();
+        } else if (key === 'M' && pressed) {
+            this.toggleFirstPersonThirdPerson();
+        } else if (key === '1' && pressed) {
+            this.selectCharacter(0);
+        } else if (key === '2' && pressed) {
+            this.selectCharacter(1);
+        } else if (key === '3' && pressed) {
+            this.selectCharacter(2);
+        } else if (key === '4' && pressed) {
+            this.selectCharacter(3);
+        } else if (key === '5' && pressed) {
+            this.selectCharacter(4);
+        } else if (key === '6' && pressed) {
+            this.selectCharacter(5);
+        } else if (key === '7' && pressed) {
+            this.selectCharacter(6);
+        } else if (key === '8' && pressed) {
+            this.selectCharacter(7);
+        } else if (key === '9' && pressed) {
+            this.selectCharacter(8);
         }
     }
     
@@ -169,7 +198,9 @@ class InputManager {
                 <p>In third-person: Hold and drag mouse to orbit camera</p>
                 <p>In first-person: Mouse to look around</p>
                 <p>In first-person: Click to shoot flamethrower</p>
-                <p>Press T to toggle between modes</p>
+                <p>Press M to toggle between first/third person modes</p>
+                <p>Press T to create a new character</p>
+                <p>Press 1-9 to switch between characters</p>
                 <p>Press ESC to exit game mode</p>
             </div>
         `;
@@ -242,6 +273,20 @@ class InputManager {
         this.cameraAngleY = angles.cameraAngleY ?? this.cameraAngleY;
         this.targetCameraAngle = angles.targetCameraAngle ?? this.targetCameraAngle;
         this.targetCameraAngleY = angles.targetCameraAngleY ?? this.targetCameraAngleY;
+    }
+    
+    toggleFirstPersonThirdPerson() {
+        this.isFirstPerson = !this.isFirstPerson;
+        console.log('First-person mode:', this.isFirstPerson);
+    }
+    
+    selectCharacter(index) {
+        console.log('Selecting character:', index);
+        if (this.game.selectCharacter) {
+            this.game.selectCharacter(index);
+        } else {
+            console.error('selectCharacter method not found on game');
+        }
     }
 }
 

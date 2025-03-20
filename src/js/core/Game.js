@@ -16,7 +16,8 @@ export class Game {
         
         // Game components
         this.world = null;
-        this.player = null;
+        this.players = []; // Array to store multiple players
+        this.activePlayer = null; // Reference to currently controlled player
         this.inputManager = null;
         this.assetLoader = null;
         this.container = null;
@@ -128,65 +129,54 @@ export class Game {
             return;
         }
         
-        // Clean up existing player if any
-        if (this.player) {
-            console.log('Game: Cleaning up existing player');
-            this.player.cleanup();
-        }
-        
         // Create player based on game mode
         try {
+            let newPlayer;
             if (this.gameMode === 'first_person') {
                 console.log('Game: Creating first-person player');
                 
                 // Create the human player with first-person mode enabled
-                this.player = new HumanPlayer(this, {
+                newPlayer = new HumanPlayer(this, {
                     isFirstPerson: true,
                     physics: { gravity: 9.8 },
                     movement: { movementSpeed: 5 },
                     controls: { 
                         sensitivity: 0.002, 
                         invertY: false,
-                        firstPersonMode: true  // Make sure controls know we're in first-person mode
+                        firstPersonMode: true
                     }
                 });
                 
                 console.log('Game: Human player created');
-                
-                // Initialize physics with scene access for terrain detection
-                if (this.player.physics && typeof this.player.physics.setScene === 'function') {
-                    console.log('Game: Setting up player physics');
-                    this.player.physics.setScene(this.scene);
-                }
-                
-                // Make sure first-person mode stays active (prevent auto-toggle)
-                if (this.player.fpCamera) {
-                    console.log('Game: Setting up first-person camera');
-                    // Delay slightly to ensure everything is ready
-                    setTimeout(() => {
-                        if (this.player && this.player.isFirstPerson && this.player.fpCamera) {
-                            console.log('Game: Ensuring first-person camera is active');
-                            this.setActiveCamera(this.player.fpCamera);
-                        }
-                    }, 50);
-                }
             } else {
                 console.log('Game: Creating third-person player');
                 
                 // Create the bunny player (default is third-person)
-                this.player = new BunnyPlayer(this, {
+                newPlayer = new BunnyPlayer(this, {
                     physics: { gravity: 7.5 },
                     movement: { movementSpeed: 7 },
                     controls: { sensitivity: 0.0025 }
                 });
                 
                 console.log('Game: Bunny player created');
-                
-                // Initialize physics with scene access for terrain detection
-                if (this.player.physics && typeof this.player.physics.setScene === 'function') {
-                    console.log('Game: Setting up player physics');
-                    this.player.physics.setScene(this.scene);
-                }
+            }
+            
+            // Initialize physics with scene access for terrain detection
+            if (newPlayer.physics && typeof newPlayer.physics.setScene === 'function') {
+                console.log('Game: Setting up player physics');
+                newPlayer.physics.setScene(this.scene);
+            }
+            
+            // Add the new player to our players array
+            this.players.push(newPlayer);
+            
+            // Set this as the active player
+            this.activePlayer = newPlayer;
+            
+            // Position the new player slightly offset from existing players
+            if (this.players.length > 1) {
+                const offset = (this.players.length - 1) * 2; // 2 units between each player
+                newPlayer.position.set(offset, 5, offset);
             }
             
             console.log('Game: Player created successfully:', this.gameMode);
@@ -197,11 +187,62 @@ export class Game {
                 this.inputManager.instructions.style.display === 'none') {
                 
                 console.log('Game: Auto-initializing player controls');
-                this.player.onInstructionsDismissed();
+                newPlayer.onInstructionsDismissed();
             }
+            
+            return newPlayer;
         } catch (error) {
             console.error('Error creating player:', error);
+            return null;
         }
+    }
+    
+    // New method to create an additional player without changing game mode
+    createAdditionalPlayer() {
+        console.log('Game: Creating additional player in current mode:', this.gameMode);
+        console.log('Game: Current number of players:', this.players.length);
+        
+        // Create a new player with the current game mode
+        const newPlayer = this.createNewPlayer();
+        
+        if (newPlayer) {
+            console.log('Game: Additional player created successfully');
+            console.log('Game: Total players after creation:', this.players.length);
+            
+            // If in first-person mode, need to handle pointer lock
+            if (this.gameMode === 'first_person') {
+                setTimeout(() => {
+                    if (this.container && document.pointerLockElement !== this.container) {
+                        console.log('Requesting pointer lock for new first-person player');
+                        this.container.requestPointerLock();
+                    }
+                }, 100);
+            }
+            
+            // Update input manager's firstPerson flag if it exists
+            if (this.inputManager) {
+                this.inputManager.isFirstPerson = (this.gameMode === 'first_person');
+            }
+            
+            // Make sure the player is visible
+            if (newPlayer.model) {
+                newPlayer.model.visible = true;
+                console.log('Game: Ensured new player model is visible');
+            }
+            
+            // Add debug sphere to visualize player position
+            const debugSphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.5, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xff0000 })
+            );
+            debugSphere.position.copy(newPlayer.position);
+            this.scene.add(debugSphere);
+            console.log('Game: Added debug sphere at player position');
+        } else {
+            console.error('Game: Failed to create additional player');
+        }
+        
+        return newPlayer;
     }
     
     switchPlayerMode() {
@@ -220,55 +261,31 @@ export class Game {
         
         this._isTogglingMode = true;
         
-        // Properly clean up existing player
-        if (this.player) {
-            // First ensure any pointer lock is released for clean switching
-            if (document.pointerLockElement && document.exitPointerLock) {
-                document.exitPointerLock();
+        // Create a new player in the new mode
+        const newPlayer = this.createNewPlayer();
+        
+        if (newPlayer) {
+            // If switching to first-person, need to request pointer lock
+            if (this.gameMode === 'first_person') {
+                // Small delay to ensure player is fully initialized
+                setTimeout(() => {
+                    if (this.container && document.pointerLockElement !== this.container) {
+                        console.log('Requesting pointer lock after switching to first-person mode');
+                        this.container.requestPointerLock();
+                    }
+                }, 100);
             }
             
-            // Wait a small delay before cleanup to ensure pointer lock is released
-            setTimeout(() => {
-                // Clean up existing player
-                this.player.cleanup();
-                
-                // Create new player with the toggled mode
-                this.createNewPlayer();
-                
-                // Initialize physics with scene access for terrain detection
-                if (this.player && this.player.physics && typeof this.player.physics.setScene === 'function') {
-                    this.player.physics.setScene(this.scene);
-                }
-                
-                // If switching to first-person, need to request pointer lock
-                if (this.gameMode === 'first_person' && this.player) {
-                    // Small delay to ensure player is fully initialized
-                    setTimeout(() => {
-                        if (this.container && document.pointerLockElement !== this.container) {
-                            console.log('Requesting pointer lock after switching to first-person mode');
-                            this.container.requestPointerLock();
-                        }
-                    }, 100);
-                }
-                
-                // Update input manager's firstPerson flag if it exists
-                if (this.inputManager) {
-                    this.inputManager.isFirstPerson = (this.gameMode === 'first_person');
-                }
-                
-                // Reset the toggling flag after a safe amount of time
-                setTimeout(() => {
-                    this._isTogglingMode = false;
-                }, 500);
-            }, 50);
-        } else {
-            this.createNewPlayer();
-            
-            // Reset the toggling flag after a safe amount of time
-            setTimeout(() => {
-                this._isTogglingMode = false;
-            }, 500);
+            // Update input manager's firstPerson flag if it exists
+            if (this.inputManager) {
+                this.inputManager.isFirstPerson = (this.gameMode === 'first_person');
+            }
         }
+        
+        // Reset the toggling flag after a safe amount of time
+        setTimeout(() => {
+            this._isTogglingMode = false;
+        }, 500);
         
         return this.gameMode;
     }
@@ -286,9 +303,9 @@ export class Game {
         this.camera.updateProjectionMatrix();
         
         // If player has first-person camera, update that too
-        if (this.player && this.player.fpCamera) {
-            this.player.fpCamera.aspect = width / height;
-            this.player.fpCamera.updateProjectionMatrix();
+        if (this.activePlayer && this.activePlayer.fpCamera) {
+            this.activePlayer.fpCamera.aspect = width / height;
+            this.activePlayer.fpCamera.updateProjectionMatrix();
         }
         
         console.log('Resized renderer and camera:', width, 'x', height);
@@ -304,10 +321,12 @@ export class Game {
             this.world.update(delta);
         }
         
-        // Update player
-        if (this.player) {
-            this.player.update(delta);
-        }
+        // Update all players
+        this.players.forEach(player => {
+            if (player) {
+                player.update(delta);
+            }
+        });
         
         // Render the scene with the active camera
         if (this.scene && this.camera && this.renderer) {

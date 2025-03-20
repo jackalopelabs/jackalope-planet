@@ -305,7 +305,8 @@ class Flamethrower extends HumanWeapon {
         if (this.player.isFirstPerson && this.player.fpCamera) {
             // Create a proper parent for the model
             this.weaponContainer = new THREE.Group();
-            this.weaponContainer.position.set(0.3, -0.3, -1.5); // Position further from camera to prevent clipping
+            // Lower the weapon's vertical position even further
+            this.weaponContainer.position.set(0.3, -0.9, -1.2); // Adjusted Y from -0.7 to -0.9
             this.weaponContainer.add(this.model);
             
             // Add to the camera
@@ -364,9 +365,9 @@ class Flamethrower extends HumanWeapon {
                 // Add to group
                 group.add(gltf.scene);
                 
-                // Adjust model scale and position
-                gltf.scene.scale.set(3.5, 3.5, 3.5); // Smaller scale to prevent camera clipping
-                gltf.scene.rotation.set(0, Math.PI, 0);
+                // Adjust model scale to half the previous size
+                gltf.scene.scale.set(1.7, 1.7, 1.7); // Reduced from 3.5 to 1.7 (approximately half)
+                gltf.scene.rotation.set(0, Math.PI/2, 0); // Rotate to face forward
             },
             undefined,
             (error) => {
@@ -399,8 +400,8 @@ class Flamethrower extends HumanWeapon {
                 // Add to group
                 group.add(gltf.scene);
                 
-                // Adjust model scale and position more dramatically for visibility testing
-                gltf.scene.scale.set(3.5, 3.5, 3.5); // Smaller scale to prevent camera clipping
+                // Adjust model scale to half its previous size
+                gltf.scene.scale.set(1.7, 1.7, 1.7); // Reduced from 3.5 to 1.7 (approximately half)
                 
                 // Get model size info for debugging only
                 const box = new THREE.Box3().setFromObject(gltf.scene);
@@ -411,8 +412,36 @@ class Flamethrower extends HumanWeapon {
                     size.y.toFixed(2), 
                     size.z.toFixed(2));
                 
-                // Try different rotations - adjusted for better visibility in first-person view
-                gltf.scene.rotation.set(0, Math.PI, 0); // Face towards player
+                // Adjust rotation to point forward
+                gltf.scene.rotation.set(0, 0, 0); // Reset rotation
+                
+                // Add rotation logs to help debug orientation
+                console.log('[DEBUG] Attempting to correct model orientation');
+                
+                // Try to find the main parts we can use for orientation
+                const mainFlamethrowerPart = this.findObjectByName(gltf.scene, "FlamethrowerElonMusk_2");
+                if (mainFlamethrowerPart) {
+                    console.log('[DEBUG] Found main flamethrower part');
+                    
+                    // Get the bounding box to understand orientation
+                    const flameThrowerBox = new THREE.Box3().setFromObject(mainFlamethrowerPart);
+                    const flameSize = flameThrowerBox.getSize(new THREE.Vector3());
+                    const flameCenter = flameThrowerBox.getCenter(new THREE.Vector3());
+                    
+                    console.log('[DEBUG] Flamethrower part size:',
+                                flameSize.x.toFixed(2), 
+                                flameSize.y.toFixed(2), 
+                                flameSize.z.toFixed(2));
+                    console.log('[DEBUG] Flamethrower part center:',
+                                flameCenter.x.toFixed(2), 
+                                flameCenter.y.toFixed(2), 
+                                flameCenter.z.toFixed(2));
+                    
+                    // Adjust model orientation based on dimensions
+                    // Correct rotation to point the model forward (toward -Z in camera space)
+                    // Need to rotate 90° + 180° to point forward instead of backward
+                    gltf.scene.rotation.set(0, Math.PI/2, 0); // Rotate 90 degrees + 180 degrees to face forward
+                }
                 
                 // Store the nozzle tip position - may need adjustment based on model
                 // Update based on model analysis
@@ -610,7 +639,7 @@ class Flamethrower extends HumanWeapon {
             if (!this.weaponContainer) {
                 console.log('[DEBUG] Creating missing weapon container');
                 this.weaponContainer = new THREE.Group();
-                this.weaponContainer.position.set(0.3, -0.3, -1.5); // Move further from camera to prevent clipping
+                this.weaponContainer.position.set(0.3, -0.9, -1.2); // Adjusted Y from -0.7 to -0.9
                 
                 // Re-parent the model
                 if (this.model.parent) {
@@ -631,7 +660,7 @@ class Flamethrower extends HumanWeapon {
             }
             
             // Now we only need to update the model's rotation, position is handled by the container
-            this.model.rotation.set(0, Math.PI, 0); // Keep the model pointed forward
+            // Don't update rotation here as it's set properly when the model is loaded
             
             // Periodically check model visibility
             if (Math.random() < 0.01) { // Log only occasionally to avoid spam
@@ -666,6 +695,19 @@ class Flamethrower extends HumanWeapon {
                     console.log('- Model is', distance.toFixed(2), 'units away at angle', angle.toFixed(2), 'degrees');
                     console.log('- Model visible:', this.loadedModel.visible);
                     console.log('- Model frustumCulled:', this.loadedModel.frustumCulled);
+                    
+                    if (this.loadedModel) {
+                        const modelEuler = new THREE.Euler();
+                        modelEuler.setFromQuaternion(this.loadedModel.quaternion);
+                        console.log('- Model rotation (radians):', 
+                                  modelEuler.x.toFixed(2), 
+                                  modelEuler.y.toFixed(2), 
+                                  modelEuler.z.toFixed(2));
+                        console.log('- Model rotation (degrees):', 
+                                  (modelEuler.x * 180 / Math.PI).toFixed(2), 
+                                  (modelEuler.y * 180 / Math.PI).toFixed(2), 
+                                  (modelEuler.z * 180 / Math.PI).toFixed(2));
+                    }
                 }
             }
         }

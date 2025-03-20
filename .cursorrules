@@ -53,6 +53,242 @@ If you switch branches (e.g., from `main` to `modular` or vice versa) and don't 
    - Check console for your custom log messages
    - Look for: "MODULAR BRANCH: Jackalope Planet initializing" or similar
 
+## Debugging Flamethrower Particles
+
+If the flamethrower particles are not appearing or behaving incorrectly, follow these steps to debug and fix the issue:
+
+1. **Enable Debug Mode**:
+   ```javascript
+   // In src/js/players/weapons/Flamethrower.js:
+   this.debug = true; // Set to true to enable debug logging
+   ```
+
+2. **Use the Debug Helper**:
+   - Open your browser console (F12)
+   - Run the built-in debug helper:
+   ```javascript
+   window.debugFlamethrower();
+   ```
+   - This will output diagnostics about the flamethrower state
+
+3. **Check Scene & Particle System**:
+   - Verify the flamethrower has a valid scene: Check console for "Scene has valid scene"
+   - Confirm particles are being created: Look for "Creating particle system with X particles"
+   - Ensure particles are being emitted: Look for "Emitted X particles" logs
+
+4. **Fix Common Particle Issues**:
+   - **No scene reference**: Check that `this.scene` is properly assigned in the constructor
+   - **Particle system not added**: Ensure `this.scene.add(this.particleSystem)` is called
+   - **Shader issues**: Try the alternative implementation by setting `useAlternativeParticles = true`
+   - **Visibility problems**: Check that `frustumCulled = false` and particles are not hidden far away
+
+5. **Rebuild and Clear Cache**:
+   ```bash
+   # Rebuild the assets
+   npm run build
+   
+   # Clear WP cache (run from the site directory)
+   wp @development cache flush
+   wp @development transient delete-all
+   wp @development acorn optimize:clear
+   ```
+
+6. **Try the Alternative Implementation**:
+   If the standard particle implementation doesn't work, edit `init()` method to use the custom shader version:
+   ```javascript
+   init(options) {
+       // Create weapon model
+       this.createWeaponModel();
+       
+       // Option to try alternative particle system implementation
+       const useAlternativeParticles = true; // Set to true for custom shaders
+       
+       // Create particle system for flames
+       if (useAlternativeParticles) {
+           console.log('[DEBUG] Using alternative particle system implementation');
+           this.createParticleSystem2();
+       } else {
+           this.createParticleSystem();
+       }
+       
+       // Create debug helpers if enabled
+       if (this.debug) {
+           this.createDebugHelpers();
+       }
+   }
+   ```
+
+7. **Modify Attribute Names**:
+   If particles still aren't showing, try changing the shader attribute names:
+   ```javascript
+   // Standard THREE.js attribute names
+   particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+   particles.setAttribute('color', new THREE.BufferAttribute(colors, 3)); // Not 'particleColor'
+   particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+   ```
+
+8. **Hard Browser Reset**:
+   - Chrome: Open Dev Tools → Network tab → Check "Disable cache"
+   - Clear browser cache and cookies
+   - Use a private/incognito window for testing
+
+9. **Verify with Debug Sphere**:
+   - Check that the red debug sphere appears at the nozzle tip
+   - This confirms the weapon model is correctly positioned
+   - If it's not visible, there may be issues with the model attachment
+
+10. **Test in Both View Modes**:
+    - Test in both first-person and third-person modes (press 'T' to toggle)
+    - Different particle behaviors may occur in each mode
+
+## THREE.js Shader Troubleshooting
+
+When working with custom shaders in THREE.js for particle effects, here are some common issues and solutions:
+
+1. **Shader Compilation Errors**:
+   - Check console for shader compilation errors
+   - WebGL errors typically start with "THREE.WebGLProgram:" or "WebGL: ERROR:"
+   - Fix syntax errors in vertex or fragment shaders
+
+2. **Shader Attribute Problems**:
+   - Ensure attribute names match between JavaScript and shader code
+   - Common issue: JavaScript `setAttribute('color',...)` must match `attribute vec3 color;` in the shader
+
+3. **Uniforms Not Updated**:
+   - Ensure uniforms are correctly defined and updated:
+   ```javascript
+   // In JavaScript
+   material.uniforms.time = { value: 0 };
+   // In update loop
+   material.uniforms.time.value += delta;
+   ```
+
+4. **Texture Issues**:
+   - Verify textures are loaded correctly and `needsUpdate = true` is set
+   - Check texture format compatibility with the device/browser
+   - Try a simpler solid-color texture for testing
+
+5. **Point Size Problems**:
+   - Some devices have limitations on gl_PointSize
+   - Try adjusting the size formula in vertex shader:
+   ```glsl
+   gl_PointSize = size * (300.0 / -mvPosition.z);
+   ```
+
+6. **Simplified Test Shader**:
+   If you're having trouble, try this guaranteed-to-render shader:
+   ```javascript
+   // Vertex shader
+   const vertexShader = `
+       attribute float size;
+       void main() {
+           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+           gl_PointSize = 10.0;
+           gl_Position = projectionMatrix * mvPosition;
+       }
+   `;
+   
+   // Fragment shader
+   const fragmentShader = `
+       void main() {
+           gl_FragColor = vec4(1.0, 0.5, 0.0, 1.0); // Bright orange
+       }
+   `;
+   ```
+
+7. **Common Alpha Blending Issues**:
+   - If particles are visible but don't blend correctly:
+   ```javascript
+   material.blending = THREE.AdditiveBlending;
+   material.transparent = true;
+   material.depthWrite = false;
+   ```
+
+8. **Compatibility Issues**:
+   - Some shader features may not work on all devices
+   - Use simpler shader code for wider compatibility
+   - Test on multiple browsers/devices
+
+## Particle System Performance Optimization
+
+If your particle system is working but causing performance issues, try these optimizations:
+
+1. **Reduce Particle Count**:
+   ```javascript
+   this.particleCount = 100; // Start with a lower number and increase as needed
+   ```
+
+2. **Optimize Update Cycle**:
+   - Only update particles that need updating:
+   ```javascript
+   // Skip update if far from camera
+   const distToCamera = camera.position.distanceTo(this.particleSystem.position);
+   if (distToCamera > 100) {
+     // Only update every few frames when far away
+     if (frameCount % 3 !== 0) return;
+   }
+   ```
+
+3. **Use GPU Instancing**:
+   - For complex particle shapes, use instanced meshes instead of points
+   - This can be more efficient for certain types of effects
+   ```javascript
+   const geometry = new THREE.SphereGeometry(0.1, 4, 4);
+   const material = new THREE.MeshBasicMaterial({ color: 0xff5500 });
+   const instancedMesh = new THREE.InstancedMesh(geometry, material, this.particleCount);
+   ```
+
+4. **Optimize Textures**:
+   - Use power-of-two texture sizes (64x64, 128x128)
+   - Compress textures where possible
+   - Consider using sprite sheets for animated particles
+
+5. **LOD (Level of Detail)**:
+   - Implement different detail levels based on distance:
+   ```javascript
+   if (distToCamera < 10) {
+     // High detail - many particles, complex shader
+   } else if (distToCamera < 50) {
+     // Medium detail - fewer particles
+   } else {
+     // Low detail - minimal particles or simplified effect
+   }
+   ```
+
+6. **Batch Similar Particles**:
+   - Group similar particles into the same system
+   - Minimize material/shader switches
+
+7. **Minimize Attribute Updates**:
+   - Only set `needsUpdate = true` for attributes that have changed
+   - Consider using typed arrays and direct buffer manipulation
+
+8. **Use Object Pooling**:
+   - Reuse particle objects rather than creating new ones
+   - This reduces garbage collection pauses
+
+9. **Profile & Measure**:
+   - Use Chrome DevTools Performance tab to identify bottlenecks
+   - Add a simple FPS counter to measure performance:
+   ```javascript
+   // Add to your game class
+   this.fpsCounter = {
+     lastTime: performance.now(),
+     frames: 0,
+     fps: 0,
+     update: function() {
+       this.frames++;
+       const now = performance.now();
+       if (now - this.lastTime > 1000) {
+         this.fps = Math.round(this.frames * 1000 / (now - this.lastTime));
+         this.frames = 0;
+         this.lastTime = now;
+         console.log(`FPS: ${this.fps}`);
+       }
+     }
+   };
+   ```
+
 ## Test System for Major Revisions
 
 To ensure changes are properly implemented with each major revision and testing cycle, follow this structured testing approach:

@@ -64,7 +64,13 @@ class HumanWeapon {
         // Mark the fire time
         this.lastFireTime = now;
         
-        console.log(`${this.name} fired!`);
+        console.log(`[DEBUG] ${this.name} fired! Scene has ${this.scene ? 'valid scene' : 'no scene'}`);
+        
+        // Debug info about scene and effects
+        if (this.scene) {
+            console.log(`[DEBUG] Scene children: ${this.scene.children.length}, Effects: ${this.effects.length}`);
+        }
+        
         return true;
     }
     

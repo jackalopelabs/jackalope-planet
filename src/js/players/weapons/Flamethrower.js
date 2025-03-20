@@ -1,6 +1,33 @@
 import * as THREE from 'three';
 import { HumanWeapon } from './HumanWeapon';
 
+// Add a global debugging helper
+let flamethrowerInstance = null;
+
+window.debugFlamethrower = function() {
+    if (!flamethrowerInstance) {
+        console.log('[DEBUG] No flamethrower instance found yet');
+        return;
+    }
+
+    const ft = flamethrowerInstance;
+    console.log('-------- FLAMETHROWER DEBUG --------');
+    console.log('Is initialized:', ft ? 'yes' : 'no');
+    console.log('Is firing:', ft.isFiring);
+    console.log('Has particle system:', ft.particleSystem ? 'yes' : 'no');
+    console.log('Particle count:', ft.particles.length);
+    console.log('Active particles:', ft.particles.filter(p => p.life > 0).length);
+    console.log('Scene:', ft.scene ? 'valid' : 'null');
+    
+    if (ft.particleSystem) {
+        console.log('Particle system parent:', ft.particleSystem.parent ? ft.particleSystem.parent.type : 'none');
+        console.log('Particle system visible:', ft.particleSystem.visible);
+        console.log('Particle system frustumCulled:', ft.particleSystem.frustumCulled);
+    }
+    
+    return 'Debug info printed';
+};
+
 class Flamethrower extends HumanWeapon {
     constructor(player, options = {}) {
         // Set up flamethrower-specific properties
@@ -12,16 +39,39 @@ class Flamethrower extends HumanWeapon {
             ...options
         });
         
-        // Flamethrower specific properties
-        this.particleCount = options.particleCount || 300; // Reduced for better performance
-        this.flameLength = options.flameLength || 25; // Increased from 10 for longer flames
-        this.flameWidth = options.flameWidth || 2;
-        this.particleSystem = null;
-        this.particles = [];
-        this.particleGeometry = null;
-        this.particleMaterial = null;
+        // Store reference for debugging
+        flamethrowerInstance = this;
         
-        // Store the current flame origin and direction for reference in update
+        // Ensure player and scene are valid
+        if (!player) {
+            console.error('[DEBUG] Player is null in Flamethrower constructor');
+        }
+        
+        if (!player.scene) {
+            console.error('[DEBUG] Scene is null in Flamethrower constructor');
+        }
+        
+        // Always initialize particles array
+        this.particles = [];
+        
+        // Flamethrower specific properties
+        this.particleCount = 200; // Reduced for better performance
+        this.flameLength = 25;
+        this.flameWidth = 2;
+        this.particleSystem = null;
+        
+        // Debug mode
+        this.debug = true;
+        
+        // Flag for automatic recreation of particle system if needed
+        this.recreationAttempted = false;
+        this.emergencyAttempted = false;
+        this.useEmergencySystem = false;
+        
+        // Flag to track which particle system implementation is used
+        this.useCustomShaders = false;
+        
+        // Store the current flame origin and direction
         this.flameOrigin = new THREE.Vector3();
         this.flameDirection = new THREE.Vector3(0, 0, 1);
         
@@ -32,103 +82,39 @@ class Flamethrower extends HumanWeapon {
             new THREE.Color(0xff0000), // Red
             new THREE.Color(0xffff00)  // Yellow
         ];
-        
-        // Sound effect
-        this.flameSound = null;
-        
-        // Flag to track if particles are initialized
-        this.particlesInitialized = false;
-        
-        // Debugging
-        this.debug = true;
     }
     
     init(options) {
-        // Create weapon model (simple tank and nozzle)
+        console.log('[DEBUG] Flamethrower init starting');
+        
+        // Create weapon model
         this.createWeaponModel();
         
+        // Option to try alternative particle system implementation
+        const useAlternativeParticles = true;
+        this.useCustomShaders = useAlternativeParticles;
+        
         // Create particle system for flames
-        this.createParticleSystem();
+        if (useAlternativeParticles) {
+            console.log('[DEBUG] Using alternative particle system implementation');
+            this.createParticleSystem2();
+        } else {
+            console.log('[DEBUG] Using standard particle system implementation');
+            this.createParticleSystem();
+        }
         
-        // Create simple spheres for debugging if enabled
+        // Create debug helpers if enabled
         if (this.debug) {
-            this.debugSphere();
+            this.createDebugHelpers();
         }
         
-        console.log('Flamethrower initialized');
-    }
-    
-    // Add a debug sphere to visualize emitter position
-    debugSphere() {
-        // Create a brighter, more visible debug sphere at the nozzle tip
-        const sphereGeometry = new THREE.SphereGeometry(0.05, 16, 16); // Larger sphere
-        const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.8 });
-        this.debugEmitter = new THREE.Mesh(sphereGeometry, sphereMaterial);
-        
-        // Position at the nozzle tip - use the stored nozzle tip position
-        this.debugEmitter.position.copy(this.nozzleTipPosition);
-        
-        if (this.model) {
-            this.model.add(this.debugEmitter);
+        // Make sure particles array exists before accessing .length
+        if (!this.particles) {
+            console.error('[DEBUG] Particles array is undefined, initializing empty array');
+            this.particles = [];
         }
         
-        // Add a second emitter in a different color to verify camera/model position
-        const refSphereGeometry = new THREE.SphereGeometry(0.04, 8, 8);
-        const refSphereMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.8 });
-        this.refEmitter = new THREE.Mesh(refSphereGeometry, refSphereMaterial);
-        this.refEmitter.position.set(0, 0, 0); // At the model origin
-        
-        if (this.model) {
-            this.model.add(this.refEmitter);
-        }
-        
-        // Add a direction line showing the fire direction - extended to show longer range
-        const lineGeometry = new THREE.BufferGeometry();
-        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 });
-        
-        // Create a line showing the actual flame path (much longer)
-        const points = [
-            this.nozzleTipPosition.clone(),
-            new THREE.Vector3(
-                this.nozzleTipPosition.x, 
-                this.nozzleTipPosition.y + 0.5, // Show the upward arc 
-                this.nozzleTipPosition.z + 20.0  // Extended much further
-            )
-        ];
-        
-        lineGeometry.setFromPoints(points);
-        this.debugLine = new THREE.Line(lineGeometry, lineMaterial);
-        
-        // Add more debug markers along the path to visualize range
-        const markerPositions = [5, 10, 15];
-        this.rangeMarkers = [];
-        
-        markerPositions.forEach((distance, index) => {
-            const markerGeometry = new THREE.SphereGeometry(0.08, 8, 8);
-            const markerMaterial = new THREE.MeshBasicMaterial({ 
-                color: index === 0 ? 0x00ffff : index === 1 ? 0xffff00 : 0xff00ff,
-                transparent: true,
-                opacity: 0.5
-            });
-            
-            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
-            marker.position.set(
-                this.nozzleTipPosition.x, 
-                this.nozzleTipPosition.y + (distance / 40) * 0.5, // Slight arc upward
-                this.nozzleTipPosition.z + distance
-            );
-            
-            if (this.model) {
-                this.model.add(marker);
-                this.rangeMarkers.push(marker);
-            }
-        });
-        
-        if (this.model) {
-            this.model.add(this.debugLine);
-        }
-        
-        console.log('Debug visualizers added to flamethrower');
+        console.log(`[DEBUG] Flamethrower initialized - particle system: ${this.particleSystem ? 'created' : 'failed'}, particles: ${this.particles.length}`);
     }
     
     createWeaponModel() {
@@ -144,533 +130,747 @@ class Flamethrower extends HumanWeapon {
         });
         const tank = new THREE.Mesh(tankGeometry, tankMaterial);
         tank.rotation.x = Math.PI / 2; // Lay horizontally
-        tank.position.set(0.15, -0.2, -0.1); // Repositioned to be more in front of player
+        tank.position.set(0.15, -0.2, -0.1);
         tank.castShadow = true;
-        tank.receiveShadow = true;
         group.add(tank);
         
         // Nozzle (cone)
-        const nozzleGeometry = new THREE.CylinderGeometry(0.03, 0.05, 0.25, 8); // Longer nozzle
+        const nozzleGeometry = new THREE.CylinderGeometry(0.03, 0.05, 0.25, 8);
         const nozzleMaterial = new THREE.MeshStandardMaterial({ 
             color: 0x222222,
             metalness: 0.5,
             roughness: 0.5
         });
         const nozzle = new THREE.Mesh(nozzleGeometry, nozzleMaterial);
-        nozzle.position.set(0.15, -0.2, 0.15); // Positioned in front of the tank
-        nozzle.rotation.x = Math.PI / 2; // Point forward
+        nozzle.position.set(0.15, -0.2, 0.15);
+        nozzle.rotation.x = Math.PI / 2;
         nozzle.castShadow = true;
-        nozzle.receiveShadow = true;
         group.add(nozzle);
         
-        // Store the nozzle tip position in local space of the weapon model
-        // This is the actual position where flame particles should originate from
-        // Calculate precisely at the end of the nozzle
+        // Store the nozzle tip position
         this.nozzleTipPosition = new THREE.Vector3(
-            nozzle.position.x,           // Same x as nozzle
-            nozzle.position.y,           // Same y as nozzle
-            nozzle.position.z + 0.2      // At the very front tip of the nozzle
+            nozzle.position.x,
+            nozzle.position.y,
+            nozzle.position.z + 0.2
         );
         
-        // Add a visual marker at the nozzle tip - make it much more visible
-        if (this.debug) {
-            const tipMarker = new THREE.Mesh(
-                new THREE.SphereGeometry(0.03, 16, 16),
-                new THREE.MeshBasicMaterial({ 
-                    color: 0x00ff00,
-                    transparent: true,
-                    opacity: 0.8
-                })
-            );
-            tipMarker.position.copy(this.nozzleTipPosition);
-            group.add(tipMarker);
-        }
-        
-        // Position for FPS view - moved forward so nozzle tip is clearly visible
-        group.position.set(0.3, -0.3, -0.1); // Right side, below, much more forward
+        // Position for FPS view
+        group.position.set(0.3, -0.3, -0.1);
         
         this.model = group;
         
-        // Add to scene or player model depending on view mode
+        // Add to camera or player model
         if (this.player.isFirstPerson && this.player.fpCamera) {
             this.player.fpCamera.add(this.model);
         } else if (this.player.model) {
-            // Add to player's hand in third-person view
             this.player.model.add(this.model);
         }
     }
     
     createParticleSystem() {
-        try {
-            // Create particle geometry
-            this.particleGeometry = new THREE.BufferGeometry();
+        // Create a simple particle system using Points
+        const particles = new THREE.BufferGeometry();
+        const positions = new Float32Array(this.particleCount * 3);
+        const colors = new Float32Array(this.particleCount * 3);
+        const sizes = new Float32Array(this.particleCount);
+        
+        console.log('[DEBUG] Creating particle system with', this.particleCount, 'particles');
+        
+        // Initialize all particles
+        for (let i = 0; i < this.particleCount; i++) {
+            // Set initial positions off-screen
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = 0;
+            positions[i * 3 + 2] = 0;
             
-            // Create positions, colors, and sizes for particles
-            const positions = new Float32Array(this.particleCount * 3);
-            const particleColors = new Float32Array(this.particleCount * 3);
-            const sizes = new Float32Array(this.particleCount);
+            // Set initial colors (will be updated during emission)
+            colors[i * 3] = 1.0;      // R
+            colors[i * 3 + 1] = 0.5;  // G
+            colors[i * 3 + 2] = 0.0;  // B
             
-            // Initialize particles
-            this.particles = [];
-            for (let i = 0; i < this.particleCount; i++) {
-                // Create particle with initial state
-                const particle = {
-                    position: new THREE.Vector3(0, 0, 0),
-                    velocity: new THREE.Vector3(0, 0, 0),
-                    color: new THREE.Color(),
-                    size: 0,
-                    life: 0,
-                    maxLife: 0
-                };
-                
-                // Initialize particles off-screen
-                positions[i * 3] = 0;
-                positions[i * 3 + 1] = 0;
-                positions[i * 3 + 2] = 0;
-                
-                particleColors[i * 3] = 1;  // Default to bright colors for visibility
-                particleColors[i * 3 + 1] = 0.5;
-                particleColors[i * 3 + 2] = 0;
-                
-                sizes[i] = 0;
-                
-                this.particles.push(particle);
-            }
+            // Set initial sizes
+            sizes[i] = 0;
             
-            // Set geometry attributes - use a different name for the color attribute to avoid conflicts
-            this.particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            this.particleGeometry.setAttribute('particleColor', new THREE.BufferAttribute(particleColors, 3));
-            this.particleGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-            
-            // Create a better particle material with improved settings
-            this.particleMaterial = new THREE.PointsMaterial({
-                size: 3,                          // Larger base size
-                sizeAttenuation: true,           // Size reduces with distance
-                map: this.createFlameTexture(),  // Custom flame texture
-                alphaTest: 0.05,                 // Lower value = less transparent pixels culled
-                transparent: true,               // Enable transparency
-                vertexColors: true,              // Use colors from vertices
-                depthWrite: false,               // Don't write to depth buffer (better blending)
-                blending: THREE.AdditiveBlending // Additive blending for glow effect
+            // Create particle object for tracking
+            this.particles.push({
+                position: new THREE.Vector3(),
+                velocity: new THREE.Vector3(),
+                color: new THREE.Color(1, 0.5, 0),
+                size: 0,
+                life: 0,
+                maxLife: 0
             });
-            
-            // Create particle system
-            this.particleSystem = new THREE.Points(this.particleGeometry, this.particleMaterial);
-            this.particleSystem.frustumCulled = false; // Prevent disappearing when out of camera view
-            
-            // Add to scene
-            if (this.scene) {
-                this.scene.add(this.particleSystem);
-                this.effects.push(this.particleSystem);
-                this.particlesInitialized = true;
-                console.log('Particle system created successfully');
-            } else {
-                console.error('Cannot add particle system: scene is null');
-            }
-        } catch (error) {
-            console.error('Error creating particle system:', error);
-            this.particlesInitialized = false;
+        }
+        
+        // Set geometry attributes
+        particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        
+        // Create texture for particles
+        const texture = this.createFlameTexture();
+        console.log('[DEBUG] Flame texture created:', texture ? 'success' : 'failed');
+        
+        // Create shader material - Using built-in PointsMaterial for simplicity
+        const material = new THREE.PointsMaterial({
+            size: 2.0,
+            map: texture,
+            transparent: true,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true
+        });
+        
+        // Create points system
+        this.particleSystem = new THREE.Points(particles, material);
+        this.particleSystem.frustumCulled = false; // Don't cull particles
+        
+        // Add to scene explicitly - important!
+        if (this.scene) {
+            this.scene.add(this.particleSystem);
+            this.effects.push(this.particleSystem);
+            console.log('[DEBUG] Particle system added to scene (effects array size:', this.effects.length, ')');
+        } else {
+            console.error('[DEBUG] Cannot add particle system: scene is null');
         }
     }
     
     createFlameTexture() {
+        // Create a canvas for the flame texture
         const canvas = document.createElement('canvas');
-        canvas.width = 128; // Higher resolution
-        canvas.height = 128;
+        canvas.width = 64;
+        canvas.height = 64;
         
         const context = canvas.getContext('2d');
         
-        // Create radial gradient for a more vibrant fireball effect
+        // Create a radial gradient for the flame
         const gradient = context.createRadialGradient(
-            64, 64, 0,    // Center and inner radius
-            64, 64, 64    // Center and outer radius
+            32, 32, 0,   // inner circle
+            32, 32, 32   // outer circle
         );
         
-        // More vibrant color stops with smoother transition
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');   // White hot center (glowing core)
-        gradient.addColorStop(0.2, 'rgba(255, 255, 0, 1)');    // Bright yellow
-        gradient.addColorStop(0.4, 'rgba(255, 165, 0, 1)');    // Orange
-        gradient.addColorStop(0.6, 'rgba(255, 69, 0, 0.9)');   // Red-orange
-        gradient.addColorStop(0.8, 'rgba(255, 0, 0, 0.5)');    // Semi-transparent red
-        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');        // Fully transparent edge
+        // Add color stops
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');   // center: white
+        gradient.addColorStop(0.3, 'rgba(255, 255, 0, 1)');   // yellow
+        gradient.addColorStop(0.6, 'rgba(255, 120, 0, 0.9)'); // orange
+        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');       // edge: transparent red
         
+        // Fill with gradient
         context.fillStyle = gradient;
-        context.fillRect(0, 0, 128, 128);
+        context.fillRect(0, 0, 64, 64);
         
-        // Add some noise/texture for more realistic fire particles
-        context.globalCompositeOperation = 'overlay';
-        
-        // Add some sparks/specks for texture
-        for (let i = 0; i < 20; i++) {
-            const x = Math.random() * 128;
-            const y = Math.random() * 128;
-            const radius = Math.random() * 3 + 1;
-            
-            context.beginPath();
-            context.arc(x, y, radius, 0, Math.PI * 2);
-            context.fillStyle = 'rgba(255, 255, 255, 0.5)';
-            context.fill();
-        }
-        
-        const texture = new THREE.Texture(canvas);
+        // Create texture
+        const texture = new THREE.CanvasTexture(canvas);
         texture.needsUpdate = true;
         
         return texture;
     }
     
+    createDebugHelpers() {
+        // Create a debug sphere at the nozzle tip
+        const sphereGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+        const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        this.debugSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        this.debugSphere.position.copy(this.nozzleTipPosition);
+        
+        if (this.model) {
+            this.model.add(this.debugSphere);
+        }
+    }
+    
     fire() {
-        // Use base class cooldown check
+        // Use base class for cooldown check
         if (!super.fire()) {
             return false;
         }
         
-        // Check if particles system is ready
-        if (!this.particlesInitialized) {
-            console.warn('Particle system not initialized, reinitializing');
-            this.createParticleSystem();
-            
-            // Skip this frame if we just reinitialized
-            return true;
-        }
-        
-        // Emit particles from flamethrower nozzle
+        // Emit particles
         this.emitParticles();
         
         return true;
     }
     
     emitParticles() {
-        // Safety checks
-        if (!this.particles || !this.particleSystem || !this.particlesInitialized) {
-            console.warn('Cannot emit particles: particle system not ready');
-            return;
+        // Ensure particles array exists
+        if (!this.particles) {
+            console.error('[DEBUG] Particles array is undefined, initializing empty array');
+            this.particles = [];
         }
         
-        if (this.particles.length === 0) {
-            console.warn('No particles to emit');
-            return;
-        }
-        
-        // Number of particles to emit per shot
-        const emitCount = 20; // Fewer particles, better performance
-        
-        // Reset and update the world position for flame origin
-        this.flameOrigin.set(0, 0, 0);
-        this.flameDirection.set(0, 0, 1); // Forward direction
-        
-        try {
-            // Ensure model exists and is properly set up
-            if (!this.model) {
-                console.warn('Weapon model not available');
-                return;
+        // Skip if no particle system
+        if (!this.particleSystem || !this.particles.length) {
+            console.log('[DEBUG] Particle diagnostic:');
+            console.log(`[DEBUG] - this.particleSystem exists: ${this.particleSystem ? 'yes' : 'no'}`);
+            console.log(`[DEBUG] - this.particles.length: ${this.particles ? this.particles.length : 'undefined'}`);
+            console.log(`[DEBUG] - this.scene exists: ${this.scene ? 'yes' : 'no'}`);
+            
+            // If using the custom shader implementation
+            if (this.useCustomShaders) {
+                console.log('[DEBUG] Using custom shader implementation');
             }
             
-            // Always update matrices to ensure accurate positions
-            this.model.updateMatrixWorld(true);
+            // Try to recreate the particle system
+            console.log('[DEBUG] Attempting to recreate particle system...');
             
-            // Get the exact world position of the nozzle tip
-            const nozzleTipWorld = new THREE.Vector3();
-            nozzleTipWorld.copy(this.nozzleTipPosition).applyMatrix4(this.model.matrixWorld);
-            
-            // Store the world position as our flame origin
-            this.flameOrigin.copy(nozzleTipWorld);
-            
-            // Determine flame direction based on view mode
-            if (this.player.isFirstPerson && this.player.fpCamera) {
-                // In first-person, use camera direction
-                this.player.fpCamera.getWorldDirection(this.flameDirection);
-                
-                if (this.debug) {
-                    console.log('FP Nozzle world position:', this.flameOrigin.clone());
-                    console.log('FP Flame direction:', this.flameDirection.clone());
-                }
-            } else if (this.player.model) {
-                // In third-person, use model direction
-                this.player.model.getWorldDirection(this.flameDirection);
-                
-                if (this.debug) {
-                    console.log('TP Nozzle world position:', this.flameOrigin.clone());
-                    console.log('TP Flame direction:', this.flameDirection.clone());
+            // Try the alternative particle system if the main one failed
+            if (!this.particleSystem) {
+                if (!this.recreationAttempted) {
+                    this.recreationAttempted = true;
+                    if (this.useCustomShaders) {
+                        this.createParticleSystem();
+                    } else {
+                        this.createParticleSystem2();
+                    }
+                    console.log('[DEBUG] Particle system recreation attempt complete');
+                    
+                    // If still not ready, log a final warning
+                    if (!this.particleSystem || !this.particles.length) {
+                        console.warn('[DEBUG] Cannot emit particles: system not ready after recreation attempt');
+                        return;
+                    }
+                } else {
+                    console.warn('[DEBUG] Cannot emit particles: system not ready after previous recreation attempt');
+                    return;
                 }
             } else {
-                console.warn('Cannot determine flame direction: player model or camera not ready');
+                console.warn('[DEBUG] Cannot emit particles: system not ready');
                 return;
             }
-            
-            // Find available particles to reuse
-            let particlesEmitted = 0;
-            for (let i = 0; i < this.particleCount && particlesEmitted < emitCount; i++) {
-                if (i >= this.particles.length) {
-                    console.warn(`Particle index out of bounds: ${i} >= ${this.particles.length}`);
-                    continue;
-                }
-                
-                const particle = this.particles[i];
-                
-                // Safety check for particle existence
-                if (!particle) {
-                    console.warn(`Particle at index ${i} is undefined`);
-                    continue;
-                }
-                
-                // Reuse dead particles
-                if (particle.life <= 0) {
-                    // Reset particle position to flame origin
-                    particle.position.copy(this.flameOrigin);
-                    
-                    // Calculate random spread - reduced spread for more focused flame
-                    const spread = 0.08; // Reduced spread for a more focused beam
-                    const spreadVec = new THREE.Vector3(
-                        (Math.random() - 0.5) * spread,
-                        (Math.random() - 0.5) * spread + 0.03, // Slight upward bias
-                        (Math.random() - 0.5) * spread
-                    );
-                    
-                    // Base velocity in flame direction - increased speed for longer distance
-                    const speed = 25 + Math.random() * 10; // Much higher speed for greater distance
-                    particle.velocity.copy(this.flameDirection).normalize().multiplyScalar(speed);
-                    
-                    // Add spread
-                    particle.velocity.add(spreadVec);
-                    
-                    // Set particle properties - adjusted for better visual effect
-                    const colorIndex = Math.floor(Math.random() * this.flameColors.length);
-                    particle.color.copy(this.flameColors[colorIndex]);
-                    
-                    // Vary initial size more for visual interest
-                    // Larger particles travel further (simulating better aerodynamics)
-                    const initialSizeVariation = Math.random();
-                    particle.size = 1.5 + initialSizeVariation * 4; 
-                    
-                    // Longer life for larger particles - helps with visual consistency
-                    const lifeVariation = 0.8 + initialSizeVariation * 1.2;
-                    particle.maxLife = 2.0 * lifeVariation;
-                    particle.life = particle.maxLife;
-                    
-                    particlesEmitted++;
-                    
-                    // Log first few particles for debugging
-                    if (this.debug && particlesEmitted < 3) {
-                        console.log(`Particle ${i} emitted at:`, particle.position.clone());
-                    }
-                }
-            }
-            
+        }
+        
+        // Get world position of nozzle tip
+        this.model.updateMatrixWorld(true);
+        const nozzleTipWorld = new THREE.Vector3();
+        nozzleTipWorld.copy(this.nozzleTipPosition);
+        nozzleTipWorld.applyMatrix4(this.model.matrixWorld);
+        
+        // Store for reference
+        this.flameOrigin.copy(nozzleTipWorld);
+        
+        // Get flame direction - use camera or model direction
+        if (this.player.isFirstPerson && this.player.fpCamera) {
+            this.player.fpCamera.getWorldDirection(this.flameDirection);
             if (this.debug) {
-                console.log(`Emitted ${particlesEmitted} particles`);
+                console.log('[DEBUG] First-person flame direction:', 
+                    this.flameDirection.x.toFixed(2), 
+                    this.flameDirection.y.toFixed(2), 
+                    this.flameDirection.z.toFixed(2)
+                );
             }
-        } catch (error) {
-            console.error('Error emitting particles:', error);
+        } else if (this.player.model) {
+            this.player.model.getWorldDirection(this.flameDirection);
+            if (this.debug) {
+                console.log('[DEBUG] Third-person flame direction:', 
+                    this.flameDirection.x.toFixed(2), 
+                    this.flameDirection.y.toFixed(2), 
+                    this.flameDirection.z.toFixed(2)
+                );
+            }
+        }
+        
+        // Number of particles to emit per call
+        const emitCount = 15;
+        
+        // Find inactive particles to activate
+        let particlesEmitted = 0;
+        for (let i = 0; i < this.particleCount && particlesEmitted < emitCount; i++) {
+            const particle = this.particles[i];
+            
+            // Skip active particles
+            if (particle.life > 0) continue;
+            
+            // Activate this particle
+            particlesEmitted++;
+            
+            // Set position at flame origin
+            particle.position.copy(this.flameOrigin);
+            
+            // Calculate random spread
+            const spread = 0.1;
+            const spreadVec = new THREE.Vector3(
+                (Math.random() - 0.5) * spread,
+                (Math.random() - 0.5) * spread + 0.05, // slight upward bias
+                (Math.random() - 0.5) * spread
+            );
+            
+            // Set velocity in flame direction with random spread
+            const speed = 10 + Math.random() * 5;
+            particle.velocity.copy(this.flameDirection).normalize().multiplyScalar(speed);
+            particle.velocity.add(spreadVec);
+            
+            // Set color (random from flame colors)
+            const colorIndex = Math.floor(Math.random() * this.flameColors.length);
+            particle.color.copy(this.flameColors[colorIndex]);
+            
+            // Set size and life
+            particle.size = 1 + Math.random() * 2;
+            particle.maxLife = 1.0 + Math.random() * 0.5;
+            particle.life = particle.maxLife;
+            
+            // First particle debug
+            if (particlesEmitted === 1 && this.debug) {
+                console.log('[DEBUG] First particle position:', 
+                    particle.position.x.toFixed(2), 
+                    particle.position.y.toFixed(2), 
+                    particle.position.z.toFixed(2)
+                );
+            }
+        }
+        
+        if (this.debug) {
+            console.log('[DEBUG] Emitted', particlesEmitted, 'particles');
         }
     }
     
     updateEffects(delta) {
-        // Check if the particle system is ready
-        if (!this.particleSystem || !this.particles || this.particles.length === 0 || !this.particlesInitialized) {
+        // Ensure particles array exists
+        if (!this.particles) {
+            console.error('[DEBUG] Particles array is undefined, initializing empty array');
+            this.particles = [];
+        }
+        
+        // Skip if no particles
+        if (!this.particleSystem || !this.particles.length) {
+            // If trying to fire, attempt emergency system creation
+            if (this.isFiring && !this.emergencyAttempted) {
+                this.emergencyAttempted = true;
+                console.log('[DEBUG] No particle system available - trying emergency fallback');
+                if (this.createEmergencyParticleSystem()) {
+                    this.useEmergencySystem = true;
+                }
+            }
             return;
         }
         
-        try {
-            // Get position and size buffer attributes
-            const positions = this.particleGeometry.attributes.position.array;
-            const colors = this.particleGeometry.attributes.particleColor.array;
-            const sizes = this.particleGeometry.attributes.size.array;
-            
-            // Update each particle
-            let activeParticles = 0;
-            for (let i = 0; i < this.particleCount; i++) {
-                // Prevent index out of bounds
-                if (i >= this.particles.length) {
-                    continue;
-                }
-                
-                const particle = this.particles[i];
-                
-                // Safety check for particle existence
-                if (!particle) {
-                    continue;
-                }
-                
-                // Skip inactive particles
-                if (particle.life <= 0) continue;
-                
-                activeParticles++;
-                
-                // Update life
-                particle.life -= delta;
-                
-                // Update position based on velocity
-                particle.position.addScaledVector(particle.velocity, delta);
-                
-                // Add some upward velocity for realistic fire effect
-                // Dynamic upward force that increases as the particle moves farther
-                const distanceFromStart = particle.position.distanceTo(this.flameOrigin);
-                const upwardForce = 2 + distanceFromStart * 0.1; // More lift the further it travels
-                particle.velocity.y += upwardForce * delta;
-                
-                // Slow down particles more gradually to maintain momentum
-                particle.velocity.multiplyScalar(0.98); // Reduced slowdown factor
-                
-                // Fade out based on life
-                const lifeRatio = particle.life / particle.maxLife;
-                
-                // Adjust size based on life (grow initially, then shrink)
-                let sizeMultiplier;
-                if (lifeRatio > 0.8) {
-                    // Growing phase (0.8-1.0 life)
-                    sizeMultiplier = 1 - (1 - lifeRatio) * 5; // Map 0.8-1.0 to 0-1
-                } else if (lifeRatio > 0.4) {
-                    // Maintain phase (0.4-0.8 life) - hold size longer for better visual at distance
-                    sizeMultiplier = 1.0; 
-                } else {
-                    // Shrinking phase (0-0.4 life)
-                    sizeMultiplier = lifeRatio * 2.5; // Map 0-0.4 to 0-1, faster falloff at the end
-                }
-                
-                // Fade between colors based on life
-                let currentColor;
-                if (lifeRatio > 0.7) {
-                    // Hot inner flame: yellow to light orange
-                    const t = (lifeRatio - 0.7) / 0.3;
-                    currentColor = this.flameColors[3].clone().lerp(this.flameColors[1], 1 - t);
-                } else if (lifeRatio > 0.3) {
-                    // Middle flame: light orange to orange
-                    const t = (lifeRatio - 0.3) / 0.4;
-                    currentColor = this.flameColors[0].clone().lerp(this.flameColors[1], t);
-                } else {
-                    // Outer flame: orange to red
-                    const t = lifeRatio / 0.3;
-                    currentColor = this.flameColors[2].clone().lerp(this.flameColors[0], t);
-                }
-                
-                // Ensure index bounds for buffer arrays
-                const idx = i * 3;
-                if (idx + 2 < positions.length && idx + 2 < colors.length && i < sizes.length) {
-                    // Update particle position
-                    positions[idx] = particle.position.x;
-                    positions[idx + 1] = particle.position.y;
-                    positions[idx + 2] = particle.position.z;
-                    
-                    // Update particle color
-                    colors[idx] = currentColor.r;
-                    colors[idx + 1] = currentColor.g;
-                    colors[idx + 2] = currentColor.b;
-                    
-                    // Update particle size
-                    sizes[i] = particle.size * sizeMultiplier;
-                }
-            }
-            
-            // Log active particles count for debugging
-            if (this.debug && this.isFiring) {
-                console.log(`Active particles: ${activeParticles}`);
-            }
-            
-            // Mark attributes for update
-            this.particleGeometry.attributes.position.needsUpdate = true;
-            this.particleGeometry.attributes.particleColor.needsUpdate = true;
-            this.particleGeometry.attributes.size.needsUpdate = true;
-        } catch (error) {
-            console.error('Error updating particle effects:', error);
-            // Reset the particle system if there's an error
-            this.particlesInitialized = false;
+        // Use emergency system if that's what we're using
+        if (this.useEmergencySystem) {
+            this.updateEmergencyParticles(delta);
+            return;
         }
-    }
-    
-    attachToPlayer() {
-        // Check view mode to determine where to attach
-        if (this.player.isFirstPerson && this.player.fpCamera) {
-            if (this.model && this.model.parent) {
-                this.model.parent.remove(this.model);
+        
+        // Check if we're using the custom shader implementation
+        if (this.particleSystem.geometry.attributes.lifetime) {
+            this.updateCustomShaderEffects(delta);
+            return;
+        }
+        
+        // Standard particle system update (original code below)
+        const positions = this.particleSystem.geometry.attributes.position.array;
+        const colors = this.particleSystem.geometry.attributes.color.array;
+        const sizes = this.particleSystem.geometry.attributes.size.array;
+        
+        // Update each particle
+        let activeParticles = 0;
+        
+        for (let i = 0; i < this.particleCount; i++) {
+            const particle = this.particles[i];
+            
+            // Skip dead particles
+            if (particle.life <= 0) continue;
+            
+            activeParticles++;
+            
+            // Update life
+            particle.life -= delta;
+            
+            // Update position based on velocity
+            particle.position.addScaledVector(particle.velocity, delta);
+            
+            // Add upward force for realism
+            particle.velocity.y += 5 * delta;
+            
+            // Slow down
+            particle.velocity.multiplyScalar(0.95);
+            
+            // Calculate life ratio for fading
+            const lifeRatio = particle.life / particle.maxLife;
+            
+            // Update color based on life
+            const idx = i * 3;
+            if (lifeRatio > 0.6) {
+                // Yellow to orange
+                colors[idx] = 1.0;  // R
+                colors[idx + 1] = 0.5 + lifeRatio * 0.5;  // G
+                colors[idx + 2] = 0;  // B
+            } else {
+                // Orange to red
+                colors[idx] = 1.0;  // R
+                colors[idx + 1] = 0.5 * (lifeRatio / 0.6);  // G
+                colors[idx + 2] = 0;  // B
             }
-            if (this.model && this.player.fpCamera) {
-                this.player.fpCamera.add(this.model);
-            }
-        } else if (this.player.model) {
-            if (this.model && this.model.parent) {
-                this.model.parent.remove(this.model);
-            }
-            if (this.model) {
-                this.player.model.add(this.model);
-            }
+            
+            // Update position
+            positions[idx] = particle.position.x;
+            positions[idx + 1] = particle.position.y;
+            positions[idx + 2] = particle.position.z;
+            
+            // Update size (grow then shrink)
+            sizes[i] = particle.size * (lifeRatio < 0.3 ? lifeRatio / 0.3 : 1.0);
+        }
+        
+        // Mark attributes for update
+        this.particleSystem.geometry.attributes.position.needsUpdate = true;
+        this.particleSystem.geometry.attributes.color.needsUpdate = true;
+        this.particleSystem.geometry.attributes.size.needsUpdate = true;
+        
+        if (this.debug && this.isFiring) {
+            console.log(`Active particles: ${activeParticles}`);
         }
     }
     
     startFire() {
         this.isFiring = true;
+        
         if (this.debug) {
-            console.log('Started firing flamethrower');
+            console.log('Flamethrower: Started firing');
         }
     }
     
     stopFire() {
         this.isFiring = false;
+        
         if (this.debug) {
-            console.log('Stopped firing flamethrower');
+            console.log('Flamethrower: Stopped firing');
         }
     }
     
     cleanup() {
         super.cleanup();
         
-        this.particlesInitialized = false;
-        
-        // Additional cleanup specific to flamethrower
-        if (this.particleGeometry) {
-            this.particleGeometry.dispose();
-            this.particleGeometry = null;
-        }
-        
-        if (this.particleMaterial) {
-            if (this.particleMaterial.map) {
-                this.particleMaterial.map.dispose();
-            }
-            this.particleMaterial.dispose();
-            this.particleMaterial = null;
-        }
-        
         // Clean up debug objects
-        if (this.debugEmitter) {
-            if (this.debugEmitter.parent) {
-                this.debugEmitter.parent.remove(this.debugEmitter);
+        if (this.debugSphere) {
+            if (this.debugSphere.parent) {
+                this.debugSphere.parent.remove(this.debugSphere);
             }
-            this.debugEmitter.geometry.dispose();
-            this.debugEmitter.material.dispose();
-            this.debugEmitter = null;
+            this.debugSphere.geometry.dispose();
+            this.debugSphere.material.dispose();
+            this.debugSphere = null;
         }
         
-        // Clean up reference emitter
-        if (this.refEmitter) {
-            if (this.refEmitter.parent) {
-                this.refEmitter.parent.remove(this.refEmitter);
-            }
-            this.refEmitter.geometry.dispose();
-            this.refEmitter.material.dispose();
-            this.refEmitter = null;
-        }
-        
-        // Clean up range markers
-        if (this.rangeMarkers && this.rangeMarkers.length) {
-            this.rangeMarkers.forEach(marker => {
-                if (marker.parent) {
-                    marker.parent.remove(marker);
-                }
-                marker.geometry.dispose();
-                marker.material.dispose();
-            });
-            this.rangeMarkers = [];
-        }
-        
-        if (this.debugLine) {
-            if (this.debugLine.parent) {
-                this.debugLine.parent.remove(this.debugLine);
-            }
-            this.debugLine.geometry.dispose();
-            this.debugLine.material.dispose();
-            this.debugLine = null;
-        }
-        
+        // Reset particles
         this.particles = [];
+    }
+    
+    // Alternative implementation using custom shaders for particles
+    createParticleSystem2() {
+        console.log('[DEBUG] Creating particle system with custom shaders');
+        
+        // Create a simple particle system using Points
+        const geometry = new THREE.BufferGeometry();
+        
+        // Create arrays for particle attributes
+        const positions = new Float32Array(this.particleCount * 3);
+        const colors = new Float32Array(this.particleCount * 3);
+        const sizes = new Float32Array(this.particleCount);
+        const lifeTimes = new Float32Array(this.particleCount);
+        
+        // Initialize all particles to be hidden initially
+        for (let i = 0; i < this.particleCount; i++) {
+            positions[i * 3] = 0;
+            positions[i * 3 + 1] = -1000; // Hide far below
+            positions[i * 3 + 2] = 0;
+            
+            colors[i * 3] = 1.0;     // R
+            colors[i * 3 + 1] = 0.5;  // G
+            colors[i * 3 + 2] = 0.0;  // B
+            
+            sizes[i] = 0;
+            lifeTimes[i] = 0;
+            
+            // Create particle object for tracking
+            this.particles.push({
+                position: new THREE.Vector3(0, -1000, 0),
+                velocity: new THREE.Vector3(),
+                color: new THREE.Color(1, 0.5, 0),
+                size: 0,
+                life: 0,
+                maxLife: 0
+            });
+        }
+        
+        // Set geometry attributes
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifeTimes, 1));
+        
+        // Create texture for particles
+        const texture = this.createFlameTexture();
+        
+        // Vertex shader
+        const vertexShader = `
+            attribute float size;
+            attribute float lifetime;
+            attribute vec3 color;
+            
+            varying float vLifetime;
+            varying vec3 vColor;
+            
+            void main() {
+                vLifetime = lifetime;
+                vColor = color;
+                
+                vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                gl_PointSize = size * (300.0 / -mvPosition.z);
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+        
+        // Fragment shader
+        const fragmentShader = `
+            uniform sampler2D diffuseTexture;
+            
+            varying float vLifetime;
+            varying vec3 vColor;
+            
+            void main() {
+                if (vLifetime <= 0.0) discard;
+                
+                vec4 texColor = texture2D(diffuseTexture, gl_PointCoord);
+                gl_FragColor = vec4(vColor * texColor.rgb, texColor.a * min(vLifetime * 2.0, 1.0));
+            }
+        `;
+        
+        // Create custom shader material
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                diffuseTexture: { value: texture }
+            },
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        
+        // Create points system
+        this.particleSystem = new THREE.Points(geometry, material);
+        this.particleSystem.frustumCulled = false;
+        
+        if (this.scene) {
+            this.scene.add(this.particleSystem);
+            this.effects.push(this.particleSystem);
+            console.log('[DEBUG] Custom shader particle system added to scene (effects array size:', this.effects.length, ')');
+        } else {
+            console.error('[DEBUG] Cannot add particle system: scene is null');
+        }
+    }
+    
+    // Update method for the custom shader particles
+    updateCustomShaderEffects(delta) {
+        // Ensure particles array exists
+        if (!this.particles) {
+            console.error('[DEBUG] Particles array is undefined in updateCustomShaderEffects, initializing empty array');
+            this.particles = [];
+        }
+        
+        if (!this.particleSystem || !this.particles.length) {
+            return;
+        }
+        
+        const positions = this.particleSystem.geometry.attributes.position.array;
+        const colors = this.particleSystem.geometry.attributes.color.array;
+        const sizes = this.particleSystem.geometry.attributes.size.array;
+        const lifeTimes = this.particleSystem.geometry.attributes.lifetime.array;
+        
+        let activeParticles = 0;
+        
+        for (let i = 0; i < this.particleCount; i++) {
+            const particle = this.particles[i];
+            
+            if (particle.life <= 0) continue;
+            
+            activeParticles++;
+            
+            // Update life
+            particle.life -= delta;
+            
+            // Update position based on velocity
+            particle.position.addScaledVector(particle.velocity, delta);
+            
+            // Add upward force
+            particle.velocity.y += 5 * delta;
+            
+            // Slow down
+            particle.velocity.multiplyScalar(0.95);
+            
+            // Calculate life ratio
+            const lifeRatio = particle.life / particle.maxLife;
+            
+            // Update buffer attributes
+            const idx = i * 3;
+            
+            // Position
+            positions[idx] = particle.position.x;
+            positions[idx + 1] = particle.position.y;
+            positions[idx + 2] = particle.position.z;
+            
+            // Color - fade from yellow to red
+            if (lifeRatio > 0.5) {
+                colors[idx] = 1.0;                   // R
+                colors[idx + 1] = 0.3 + lifeRatio * 0.7; // G
+                colors[idx + 2] = 0.0;               // B
+            } else {
+                colors[idx] = 1.0;                   // R
+                colors[idx + 1] = 0.3 * lifeRatio * 2.0; // G
+                colors[idx + 2] = 0.0;               // B
+            }
+            
+            // Size
+            sizes[i] = particle.size * (lifeRatio < 0.3 ? lifeRatio / 0.3 : 1.0);
+            
+            // Lifetime
+            lifeTimes[i] = lifeRatio;
+        }
+        
+        // Mark attributes for update
+        this.particleSystem.geometry.attributes.position.needsUpdate = true;
+        this.particleSystem.geometry.attributes.color.needsUpdate = true;
+        this.particleSystem.geometry.attributes.size.needsUpdate = true;
+        this.particleSystem.geometry.attributes.lifetime.needsUpdate = true;
+        
+        if (this.debug && this.isFiring) {
+            console.log('[DEBUG] Active custom shader particles:', activeParticles);
+        }
+    }
+    
+    // Add a simplified emergency fallback particle system
+    createEmergencyParticleSystem() {
+        console.log('[DEBUG] Creating emergency fallback particle system');
+        
+        try {
+            // Create an absolutely minimal particle system with no frills
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            
+            // Create simple particle positions
+            for (let i = 0; i < 100; i++) {
+                vertices.push(0, 0, 0); // All at origin initially
+            }
+            
+            const positionAttribute = new THREE.Float32BufferAttribute(vertices, 3);
+            geometry.setAttribute('position', positionAttribute);
+            
+            // Create a solid orange material
+            const material = new THREE.PointsMaterial({
+                size: 5.0,
+                color: 0xff5500,
+                transparent: true,
+                opacity: 0.8,
+                sizeAttenuation: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+            
+            // Create points system
+            this.particleSystem = new THREE.Points(geometry, material);
+            this.particleSystem.frustumCulled = false;
+            
+            // Create basic particle data
+            this.particles = [];
+            for (let i = 0; i < 100; i++) {
+                this.particles.push({
+                    position: new THREE.Vector3(),
+                    velocity: new THREE.Vector3(),
+                    color: new THREE.Color(1, 0.5, 0),
+                    size: 5.0,
+                    life: 0,
+                    maxLife: 0
+                });
+            }
+            
+            // Add to scene
+            if (this.scene) {
+                this.scene.add(this.particleSystem);
+                this.effects.push(this.particleSystem);
+                console.log('[DEBUG] Emergency particle system added to scene');
+                return true;
+            } else {
+                console.error('[DEBUG] Cannot add emergency particle system: scene is null');
+                return false;
+            }
+        } catch (error) {
+            console.error('[DEBUG] Failed to create emergency particle system:', error);
+            return false;
+        }
+    }
+    
+    // Override the emitParticles method for the emergency system
+    updateEmergencyParticles(delta) {
+        // Ensure particles array exists
+        if (!this.particles) {
+            console.error('[DEBUG] Particles array is undefined in updateEmergencyParticles, initializing empty array');
+            this.particles = [];
+        }
+        
+        if (!this.particleSystem || !this.particles.length) {
+            return;
+        }
+        
+        const positions = this.particleSystem.geometry.attributes.position.array;
+        
+        // Get nozzle world position
+        this.model.updateMatrixWorld(true);
+        const nozzleTipWorld = new THREE.Vector3();
+        nozzleTipWorld.copy(this.nozzleTipPosition);
+        nozzleTipWorld.applyMatrix4(this.model.matrixWorld);
+        
+        // Get direction
+        let direction = new THREE.Vector3(0, 0, 1);
+        if (this.player.isFirstPerson && this.player.fpCamera) {
+            this.player.fpCamera.getWorldDirection(direction);
+        } else if (this.player.model) {
+            this.player.model.getWorldDirection(direction);
+        }
+        
+        // Update each particle
+        let activeParticles = 0;
+        
+        for (let i = 0; i < this.particles.length; i++) {
+            const particle = this.particles[i];
+            
+            // Update life
+            if (particle.life > 0) {
+                particle.life -= delta;
+                particle.position.addScaledVector(particle.velocity, delta);
+                particle.velocity.y += 5 * delta; // Rising effect
+                
+                // Update position in buffer
+                const idx = i * 3;
+                positions[idx] = particle.position.x;
+                positions[idx + 1] = particle.position.y;
+                positions[idx + 2] = particle.position.z;
+                
+                activeParticles++;
+            }
+            
+            // Emit new particles if firing
+            if (this.isFiring && particle.life <= 0 && activeParticles < 30) {
+                // Reset particle at nozzle position
+                particle.position.copy(nozzleTipWorld);
+                
+                // Set velocity in flame direction with some randomness
+                const speed = 10 + Math.random() * 5;
+                particle.velocity.copy(direction).multiplyScalar(speed);
+                particle.velocity.x += (Math.random() - 0.5) * 2;
+                particle.velocity.y += (Math.random() - 0.5) * 2 + 0.5; // Slight upward bias
+                particle.velocity.z += (Math.random() - 0.5) * 2;
+                
+                // Set lifetime
+                particle.maxLife = 0.5 + Math.random() * 0.5;
+                particle.life = particle.maxLife;
+                
+                activeParticles++;
+            }
+        }
+        
+        // Update the geometry
+        this.particleSystem.geometry.attributes.position.needsUpdate = true;
+        
+        if (this.debug && this.isFiring) {
+            console.log(`[DEBUG] Active emergency particles: ${activeParticles}`);
+        }
     }
 }
 

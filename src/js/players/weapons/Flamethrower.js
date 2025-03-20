@@ -734,6 +734,12 @@ class Flamethrower extends HumanWeapon {
         let activeParticles = 0;
         let averageParticleDistance = 0;
         
+        // Track the center point of particle cloud for lighting
+        let particleCenterX = 0;
+        let particleCenterY = 0;
+        let particleCenterZ = 0;
+        let particleMaxDistance = 0;
+        
         for (let i = 0; i < this.particleCount; i++) {
             const particle = this.particles[i];
             
@@ -755,9 +761,18 @@ class Flamethrower extends HumanWeapon {
             particle.velocity.multiplyScalar(0.97); // Changed from 0.95 to 0.97 for less drag
             
             // Track the average particle distance for light position
-            if (this.flameLight) {
-                averageParticleDistance += particle.position.distanceTo(this.flameOrigin);
+            const particleDistance = particle.position.distanceTo(this.flameOrigin);
+            averageParticleDistance += particleDistance;
+            
+            // Track the furthest particle for light radius calculation
+            if (particleDistance > particleMaxDistance) {
+                particleMaxDistance = particleDistance;
             }
+            
+            // Sum positions for center calculation
+            particleCenterX += particle.position.x;
+            particleCenterY += particle.position.y;
+            particleCenterZ += particle.position.z;
             
             // Calculate life ratio for fading
             const lifeRatio = particle.life / particle.maxLife;
@@ -814,20 +829,24 @@ class Flamethrower extends HumanWeapon {
                 }
             }
             
-            // If we have an average particle distance, adjust the light position
-            if (activeParticles > 10 && averageParticleDistance > 0) {
-                // Calculate average distance
-                averageParticleDistance /= activeParticles;
+            // If we have active particles, calculate their center point
+            if (activeParticles > 10) {
+                // Calculate center of particle cloud
+                const particleCenter = new THREE.Vector3(
+                    particleCenterX / activeParticles,
+                    particleCenterY / activeParticles,
+                    particleCenterZ / activeParticles
+                );
                 
-                // Adjust light position to be partway along the flame's path
-                const adjustedPosition = this.flameDirection.clone()
-                    .normalize()
-                    .multiplyScalar(averageParticleDistance * 0.4); // Position light 40% down the flame path
+                // Position the main flame light at the center of the particle cloud
+                this.flameLight.position.copy(particleCenter);
                 
-                this.flameLight.position.copy(this.flameOrigin).add(adjustedPosition);
+                // Update the light's distance based on the furthest particle
+                // This makes the light radius adapt to the flame size
+                this.flameLight.distance = Math.max(this.flameLightDistance, particleMaxDistance * 1.5);
                 
                 if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
-                    console.log('[DEBUG] Flame light position:', 
+                    console.log('[DEBUG] Flame light position (particle center):', 
                                 this.flameLight.position.x.toFixed(2),
                                 this.flameLight.position.y.toFixed(2),
                                 this.flameLight.position.z.toFixed(2));
@@ -839,14 +858,12 @@ class Flamethrower extends HumanWeapon {
                     this.lightDebugSphere.visible = this.isFiring;
                 }
                 
-                // Update ambient glow light position to follow main light but stay a bit closer to the player
+                // Create multiple ambient lights at different particle positions
                 if (this.ambientGlowLight) {
                     // Position the ambient glow light closer to the player for better illumination
-                    const ambientPos = this.flameDirection.clone()
-                        .normalize()
-                        .multiplyScalar(averageParticleDistance * 0.2); // Position glow light 20% down the flame path
-                    
-                    this.ambientGlowLight.position.copy(this.flameOrigin).add(ambientPos);
+                    // but still within the particle cloud
+                    const ambientPos = new THREE.Vector3().copy(this.flameOrigin).lerp(particleCenter, 0.3);
+                    this.ambientGlowLight.position.copy(ambientPos);
                     
                     // Update debug sphere for glow light
                     if (this.glowDebugSphere) {
@@ -858,10 +875,24 @@ class Flamethrower extends HumanWeapon {
                     this.ambientGlowLight.intensity = this.isFiring ? 
                         this.ambientGlowIntensity * intensityFactor * 0.8 : // Slightly dimmer than main light
                         Math.max(0, this.ambientGlowLight.intensity - delta); // Slower fade out
+                    
+                    // Also update the ambient light's distance dynamically
+                    this.ambientGlowLight.distance = Math.max(this.ambientGlowDistance, particleMaxDistance * 2.5);
                         
                     if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
-                        console.log('[DEBUG] Ambient glow intensity:', this.ambientGlowLight.intensity.toFixed(2));
+                        console.log('[DEBUG] Ambient glow intensity:', this.ambientGlowLight.intensity.toFixed(2),
+                                   'distance:', this.ambientGlowLight.distance.toFixed(2));
                     }
+                }
+                
+                // Create secondary lights at particle positions for more distributed lighting
+                if (this.isFiring && !this.secondaryLights) {
+                    this.createSecondaryLights();
+                }
+                
+                // Update secondary particle lights if they exist
+                if (this.secondaryLights && this.secondaryLights.length > 0) {
+                    this.updateSecondaryLights(activeParticles, intensityFactor);
                 }
             }
         } else if (this.flameLight) {
@@ -926,6 +957,20 @@ class Flamethrower extends HumanWeapon {
     
     cleanup() {
         super.cleanup();
+        
+        // Clean up secondary lights
+        if (this.secondaryLights) {
+            for (let i = 0; i < this.secondaryLights.length; i++) {
+                const lightInfo = this.secondaryLights[i];
+                if (lightInfo.light) {
+                    if (lightInfo.light.parent) {
+                        lightInfo.light.parent.remove(lightInfo.light);
+                    }
+                    lightInfo.light = null;
+                }
+            }
+            this.secondaryLights = null;
+        }
         
         // Clean up debug objects
         if (this.debugSphere) {
@@ -1119,6 +1164,12 @@ class Flamethrower extends HumanWeapon {
         let activeParticles = 0;
         let averageParticleDistance = 0;
         
+        // Track the center point of particle cloud for lighting
+        let particleCenterX = 0;
+        let particleCenterY = 0;
+        let particleCenterZ = 0;
+        let particleMaxDistance = 0;
+        
         for (let i = 0; i < this.particleCount; i++) {
             const particle = this.particles[i];
             
@@ -1138,10 +1189,19 @@ class Flamethrower extends HumanWeapon {
             // Slow down
             particle.velocity.multiplyScalar(0.97); // Changed from 0.95 to 0.97
             
-            // Track the average particle distance for light position
-            if (this.flameLight) {
-                averageParticleDistance += particle.position.distanceTo(this.flameOrigin);
+            // Track particles for lighting calculations
+            const particleDistance = particle.position.distanceTo(this.flameOrigin);
+            averageParticleDistance += particleDistance;
+            
+            // Track the furthest particle for light radius calculation
+            if (particleDistance > particleMaxDistance) {
+                particleMaxDistance = particleDistance;
             }
+            
+            // Sum positions for center calculation
+            particleCenterX += particle.position.x;
+            particleCenterY += particle.position.y;
+            particleCenterZ += particle.position.z;
             
             // Calculate life ratio
             const lifeRatio = particle.life / particle.maxLife;
@@ -1178,7 +1238,7 @@ class Flamethrower extends HumanWeapon {
         this.particleSystem.geometry.attributes.size.needsUpdate = true;
         this.particleSystem.geometry.attributes.lifetime.needsUpdate = true;
         
-        // Update flame light based on active particles - same as standard effect
+        // Update flame light based on active particles
         if (this.flameLight && this.useDynamicLighting && activeParticles > 0) {
             // Calculate light intensity based on number of active particles
             const intensityFactor = Math.min(1.0, activeParticles / 50); // 50 particles = 100% intensity
@@ -1202,20 +1262,24 @@ class Flamethrower extends HumanWeapon {
                 }
             }
             
-            // If we have an average particle distance, adjust the light position
-            if (activeParticles > 10 && averageParticleDistance > 0) {
-                // Calculate average distance
-                averageParticleDistance /= activeParticles;
+            // If we have active particles, calculate their center point
+            if (activeParticles > 10) {
+                // Calculate center of particle cloud
+                const particleCenter = new THREE.Vector3(
+                    particleCenterX / activeParticles,
+                    particleCenterY / activeParticles,
+                    particleCenterZ / activeParticles
+                );
                 
-                // Adjust light position to be partway along the flame's path
-                const adjustedPosition = this.flameDirection.clone()
-                    .normalize()
-                    .multiplyScalar(averageParticleDistance * 0.4); // Position light 40% down the flame path
+                // Position the main flame light at the center of the particle cloud
+                this.flameLight.position.copy(particleCenter);
                 
-                this.flameLight.position.copy(this.flameOrigin).add(adjustedPosition);
+                // Update the light's distance based on the furthest particle
+                // This makes the light radius adapt to the flame size
+                this.flameLight.distance = Math.max(this.flameLightDistance, particleMaxDistance * 1.5);
                 
                 if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
-                    console.log('[DEBUG] Flame light position:', 
+                    console.log('[DEBUG] Flame light position (particle center):', 
                                 this.flameLight.position.x.toFixed(2),
                                 this.flameLight.position.y.toFixed(2),
                                 this.flameLight.position.z.toFixed(2));
@@ -1227,14 +1291,12 @@ class Flamethrower extends HumanWeapon {
                     this.lightDebugSphere.visible = this.isFiring;
                 }
                 
-                // Update ambient glow light position to follow main light but stay a bit closer to the player
+                // Create multiple ambient lights at different particle positions
                 if (this.ambientGlowLight) {
                     // Position the ambient glow light closer to the player for better illumination
-                    const ambientPos = this.flameDirection.clone()
-                        .normalize()
-                        .multiplyScalar(averageParticleDistance * 0.2); // Position glow light 20% down the flame path
-                    
-                    this.ambientGlowLight.position.copy(this.flameOrigin).add(ambientPos);
+                    // but still within the particle cloud
+                    const ambientPos = new THREE.Vector3().copy(this.flameOrigin).lerp(particleCenter, 0.3);
+                    this.ambientGlowLight.position.copy(ambientPos);
                     
                     // Update debug sphere for glow light
                     if (this.glowDebugSphere) {
@@ -1248,8 +1310,19 @@ class Flamethrower extends HumanWeapon {
                         Math.max(0, this.ambientGlowLight.intensity - delta); // Slower fade out
                         
                     if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
-                        console.log('[DEBUG] Ambient glow intensity:', this.ambientGlowLight.intensity.toFixed(2));
+                        console.log('[DEBUG] Ambient glow intensity:', this.ambientGlowLight.intensity.toFixed(2),
+                                   'distance:', this.ambientGlowLight.distance.toFixed(2));
                     }
+                }
+                
+                // Create secondary lights at particle positions for more distributed lighting
+                if (this.isFiring && !this.secondaryLights) {
+                    this.createSecondaryLights();
+                }
+                
+                // Update secondary particle lights if they exist
+                if (this.secondaryLights && this.secondaryLights.length > 0) {
+                    this.updateSecondaryLights(activeParticles, intensityFactor);
                 }
             }
         } else if (this.flameLight) {
@@ -1650,6 +1723,114 @@ class Flamethrower extends HumanWeapon {
         if (material.type === 'MeshPhongMaterial' || material.type === 'MeshLambertMaterial') {
             material.shininess = Math.max(material.shininess || 0, 10);
             material.specular = material.specular || new THREE.Color(0x111111);
+        }
+    }
+    
+    // New method to create secondary lights that follow particles
+    createSecondaryLights() {
+        if (!this.scene || !this.useDynamicLighting) return;
+        
+        console.log('[DEBUG] Creating secondary particle lights');
+        
+        this.secondaryLights = [];
+        
+        // Create a few smaller lights that will follow particles
+        const numLights = 3;
+        
+        for (let i = 0; i < numLights; i++) {
+            // Create a point light for particles
+            const light = new THREE.PointLight(
+                this.flameLightColor,
+                this.flameLightIntensity * 0.3, // Lower intensity than main light
+                this.flameLightDistance * 0.6,  // Smaller radius
+                1.5 // Faster decay
+            );
+            
+            // Don't cast shadows from secondary lights (performance)
+            light.castShadow = false;
+            
+            // Start at origin
+            light.position.copy(this.flameOrigin);
+            
+            // Add to scene
+            this.scene.add(light);
+            this.effects.push(light);
+            this.secondaryLights.push({
+                light: light,
+                targetParticleIdx: Math.floor(Math.random() * this.particleCount), // Random target
+                lifespan: 0 // Will be updated
+            });
+        }
+        
+        console.log(`[DEBUG] Created ${numLights} secondary particle lights`);
+    }
+    
+    // Update secondary lights to follow specific particles
+    updateSecondaryLights(activeParticles, intensityFactor) {
+        if (!this.secondaryLights || !this.isFiring) return;
+        
+        // Update each secondary light
+        for (let i = 0; i < this.secondaryLights.length; i++) {
+            const lightInfo = this.secondaryLights[i];
+            
+            // Decrease lifespan
+            lightInfo.lifespan -= 0.05;
+            
+            // If expired, assign a new target particle
+            if (lightInfo.lifespan <= 0) {
+                // Find a new active particle to follow
+                let attempts = 0;
+                let foundActive = false;
+                
+                while (!foundActive && attempts < 20) {
+                    const idx = Math.floor(Math.random() * this.particleCount);
+                    const particle = this.particles[idx];
+                    
+                    if (particle && particle.life > 0.5) { // Only pick particles with decent life left
+                        lightInfo.targetParticleIdx = idx;
+                        lightInfo.lifespan = 0.5 + Math.random() * 0.5; // Random lifespan 0.5-1.0 seconds
+                        foundActive = true;
+                    }
+                    
+                    attempts++;
+                }
+                
+                // If we couldn't find an active particle, use main flame light position
+                if (!foundActive && this.flameLight) {
+                    lightInfo.light.position.copy(this.flameLight.position);
+                    lightInfo.light.position.x += (Math.random() - 0.5) * 2;
+                    lightInfo.light.position.y += (Math.random() - 0.5) * 2;
+                    lightInfo.light.position.z += (Math.random() - 0.5) * 2;
+                }
+            }
+            
+            // If we have a valid target, make the light follow it
+            const targetIdx = lightInfo.targetParticleIdx;
+            if (targetIdx >= 0 && targetIdx < this.particleCount) {
+                const particle = this.particles[targetIdx];
+                
+                if (particle && particle.life > 0) {
+                    // Move light to particle position
+                    lightInfo.light.position.copy(particle.position);
+                    
+                    // Update intensity based on particle life
+                    const lifeRatio = particle.life / particle.maxLife;
+                    lightInfo.light.intensity = this.flameLightIntensity * 0.3 * intensityFactor * lifeRatio;
+                    
+                    // Add some flickering
+                    const flicker = 0.8 + Math.random() * 0.4; // 0.8-1.2
+                    lightInfo.light.intensity *= flicker;
+                    
+                    // Change light color based on particle life
+                    if (lifeRatio > 0.6) {
+                        // Yellow-orange for fresh particles
+                        lightInfo.light.color.set(0xff9500);
+                    } else {
+                        // Reddish for older particles
+                        lightInfo.light.color.set(0xff3800);
+                    }
+                }
+            }
         }
     }
 }

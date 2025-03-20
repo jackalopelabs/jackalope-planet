@@ -238,6 +238,8 @@ class Flamethrower extends HumanWeapon {
         }
         
         // Create debug helpers if enabled
+        // Disable debug helpers for cleaner appearance
+        this.debug = false; // Set debug to false to avoid creating visual helpers
         if (this.debug) {
             this.createDebugHelpers();
         }
@@ -252,97 +254,47 @@ class Flamethrower extends HumanWeapon {
     }
     
     createWeaponModel() {
-        // Create a group to hold the loaded model
         const group = new THREE.Group();
-        
-        // Ensure group isn't frustum culled
-        group.frustumCulled = false;
-        
-        // Store a reference to the group for positioning updates
         this.modelGroup = group;
         
-        // Get the direct model path from settings
+        // If there's no player or scene, create a simple placeholder
+        if (!this.player || !this.scene) {
+            this.createSimpleGeometricModel(group);
+            return;
+        }
+        
+        // Get the model path dynamically
         const directModelPath = getModelPath('flamethrower');
         
-        // Try the direct path first
-        console.log('[DEBUG] Attempting to load flamethrower directly from:', directModelPath);
-        
-        checkAssetExists(directModelPath)
-            .then(exists => {
-                if (exists) {
-                    // If the direct path exists, use it
-                    console.log('[DEBUG] Direct model path exists, loading model');
-                    
-                    // Add a coordinate axes helper to visualize orientation
-                    const axesHelper = new THREE.AxesHelper(0.2);
-                    group.add(axesHelper);
-                    console.log('[DEBUG] Added axes helper to model group');
-                    
-                    // Add a visible helper object to ensure the group is visible
-                    const helperSphere = new THREE.Mesh(
-                        new THREE.SphereGeometry(0.1, 8, 8),
-                        new THREE.MeshBasicMaterial({ color: 0x0000ff })
-                    );
-                    helperSphere.position.set(0, 0, 0);
-                    helperSphere.frustumCulled = false;
-                    group.add(helperSphere);
-                    console.log('[DEBUG] Added helper sphere to model group');
-                    
-                    // Now load the actual model
-                    this.loadModel(directModelPath, group);
-                } else {
-                    console.log('[DEBUG] Direct model path does not exist, trying alternatives');
-                    // Define several possible paths to try
-                    const possiblePaths = [
-                        'assets/models/weapons/flamethrower.glb',               // Assets directory (preferred)
-                        'src/assets/models/weapons/flamethrower.glb',           // Source assets directory
-                        'src/js/assets/models/weapons/flamethrower.glb',        // JS assets directory
-                        'models/weapons/flamethrower.glb',                     // Simplified path
-                        'flamethrower.glb'                                     // Direct in plugin root
-                    ];
-                    
-                    console.log('[DEBUG] Will try these paths for the flamethrower model:');
-                    const resolvedPaths = possiblePaths.map(path => {
-                        const resolved = getAssetPath(path);
-                        console.log(`[DEBUG] - ${path} => ${resolved}`);
-                        return { original: path, resolved };
-                    });
-                    
-                    // Check which paths actually exist
-                    Promise.all(resolvedPaths.map(path => 
-                        checkAssetExists(path.resolved)
-                            .then(exists => ({ ...path, exists }))
-                    ))
-                    .then(results => {
-                        console.log('[DEBUG] Path existence check results:');
-                        results.forEach(result => {
-                            console.log(`[DEBUG] - ${result.original}: ${result.exists ? 'EXISTS' : 'NOT FOUND'}`);
-                        });
-                        
-                        // Find the first path that exists
-                        const validPath = results.find(result => result.exists);
-                        
-                        if (validPath) {
-                            console.log('[DEBUG] Using valid path:', validPath.resolved);
-                            this.loadModel(validPath.resolved, group);
-                        } else {
-                            console.error('[DEBUG] No valid model path found, using fallback');
-                            this.createSimpleGeometricModel(group);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('[DEBUG] Error checking paths:', error);
-                        this.createSimpleGeometricModel(group);
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('[DEBUG] Error checking direct model path:', error);
-                this.createSimpleGeometricModel(group);
-            });
+        try {
+            console.log('[DEBUG] Attempting to load flamethrower directly from:', directModelPath);
+            
+            // Load from model registry first
+            if (directModelPath) {
+                this.loadModel(directModelPath, group);
+            } else {
+                // If not in registry, try series of potential paths
+                const potentialPaths = [
+                    'assets/models/weapons/flamethrower.glb',               // Assets directory (preferred)
+                    'src/assets/models/weapons/flamethrower.glb',           // Source assets directory
+                    'src/js/assets/models/weapons/flamethrower.glb',        // JS assets directory
+                    'models/weapons/flamethrower.glb',                     // Simplified path
+                    'flamethrower.glb'                                     // Direct in plugin root
+                ];
+                
+                console.log('[DEBUG] Will try these paths for the flamethrower model:');
+                potentialPaths.forEach(path => console.log('- ' + path));
+                
+                // Try loading from each path until success
+                this.tryLoadingFromPaths(potentialPaths, group, 0);
+            }
+        } catch(error) {
+            console.error('[DEBUG] Error checking direct model path:', error);
+            this.createSimpleGeometricModel(group);
+        }
         
         // Position for FPS view - careful positioning to ensure visibility
-        group.position.set(0.15, -0.15, -0.20); // Bring closer to camera
+        group.position.set(0, 0, 0); // Reset position - we'll set it properly in updateModelPosition
         
         this.model = group;
         
@@ -371,6 +323,50 @@ class Flamethrower extends HumanWeapon {
         }
     }
     
+    // Try loading from multiple paths recursively
+    tryLoadingFromPaths(paths, group, index) {
+        if (index >= paths.length) {
+            console.log('[DEBUG] Tried all paths, falling back to geometric model');
+            this.createSimpleGeometricModel(group);
+            return;
+        }
+        
+        const currentPath = paths[index];
+        const resolvedPath = getAssetPath ? getAssetPath(currentPath) : currentPath;
+        
+        console.log(`[DEBUG] Trying path ${index + 1}/${paths.length}: ${resolvedPath}`);
+        
+        // Try to load from this path
+        const loader = new GLTFLoader();
+        loader.load(
+            resolvedPath,
+            (gltf) => {
+                // Success!
+                console.log('[DEBUG] Successfully loaded model from:', resolvedPath);
+                this.loadedModel = gltf.scene;
+                
+                // Ensure model and children aren't frustum culled
+                gltf.scene.frustumCulled = false;
+                gltf.scene.traverse(child => {
+                    child.frustumCulled = false;
+                });
+                
+                // Add to group
+                group.add(gltf.scene);
+                
+                // Adjust model scale and position
+                gltf.scene.scale.set(3.0, 3.0, 3.0); // Much larger scale
+                gltf.scene.rotation.set(0, Math.PI, 0);
+            },
+            undefined,
+            (error) => {
+                // Failed, try next path
+                console.log(`[DEBUG] Failed to load from ${resolvedPath}:`, error);
+                this.tryLoadingFromPaths(paths, group, index + 1);
+            }
+        );
+    }
+    
     // Load the model using a known valid path
     loadModel(modelPath, group) {
         const loader = new GLTFLoader();
@@ -394,14 +390,12 @@ class Flamethrower extends HumanWeapon {
                 group.add(gltf.scene);
                 
                 // Adjust model scale and position more dramatically for visibility testing
-                gltf.scene.scale.set(1.0, 1.0, 1.0); // Much larger scale for visibility
+                gltf.scene.scale.set(3.0, 3.0, 3.0); // Much larger scale for better visibility
                 
-                // Debug box to visualize model bounds
+                // Get model size info for debugging only
                 const box = new THREE.Box3().setFromObject(gltf.scene);
                 const size = box.getSize(new THREE.Vector3());
-                const boxHelper = new THREE.BoxHelper(gltf.scene, 0xff0000);
-                boxHelper.frustumCulled = false;
-                group.add(boxHelper);
+                
                 console.log('[DEBUG] Model size:', 
                     size.x.toFixed(2), 
                     size.y.toFixed(2), 
@@ -409,14 +403,6 @@ class Flamethrower extends HumanWeapon {
                 
                 // Try different rotations - adjusted for better visibility in first-person view
                 gltf.scene.rotation.set(0, Math.PI, 0); // Face towards player
-                
-                // Add a visible sphere at origin for reference
-                const originSphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.05, 8, 8),
-                    new THREE.MeshBasicMaterial({ color: 0x00ff00 })
-                );
-                originSphere.frustumCulled = false;
-                group.add(originSphere);
                 
                 // Store the nozzle tip position - may need adjustment based on model
                 // Update based on model analysis
@@ -448,14 +434,6 @@ class Flamethrower extends HumanWeapon {
                         flameCenter.y,
                         flameCenter.z + flameSize.z/2 // Add half the z-size to get to the front
                     );
-                    
-                    // Add a red sphere to visualize the nozzle position
-                    const nozzleSphere = new THREE.Mesh(
-                        new THREE.SphereGeometry(0.05, 8, 8),
-                        new THREE.MeshBasicMaterial({ color: 0xff0000 })
-                    );
-                    nozzleSphere.position.copy(this.nozzleTipPosition);
-                    group.add(nozzleSphere);
                 }
                 
                 // Try to find the nozzle tip in the model by name
@@ -620,7 +598,8 @@ class Flamethrower extends HumanWeapon {
         if (this.player.isFirstPerson && this.player.fpCamera) {
             // First-person positioning - adjusted for better visibility
             // Position more dramatically in front of camera
-            this.model.position.set(0.15, -0.15, -0.25); // Bring model closer, higher, and more central
+            this.model.position.set(0.25, -0.95, -0.45); // Adjusted to compensate for model center at y=1.04
+            this.model.rotation.set(0, Math.PI, 0); // Rotate to point forward
             
             // Add subtle weapon bobbing for more realism
             if (this.player.velocity && this.modelGroup) {
@@ -1747,6 +1726,9 @@ class Flamethrower extends HumanWeapon {
                         this.ambientGlowIntensity * intensityFactor * 0.8 : // Slightly dimmer than main light
                         Math.max(0, this.ambientGlowLight.intensity - delta); // Slower fade out
                     
+                    // Also update the ambient light's distance dynamically
+                    this.ambientGlowLight.distance = Math.max(this.ambientGlowDistance, particleMaxDistance * 2.5);
+                        
                     if (Math.random() < 0.05) {  // Log occasionally to avoid console spam
                         console.log('[DEBUG] Ambient glow intensity:', this.ambientGlowLight.intensity.toFixed(2),
                                    'distance:', this.ambientGlowLight.distance.toFixed(2));

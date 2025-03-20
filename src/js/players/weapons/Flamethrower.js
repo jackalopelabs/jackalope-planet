@@ -726,6 +726,16 @@ class Flamethrower extends HumanWeapon {
                 }
             }
         }
+        
+        // Update debug emitter position if it exists
+        if (this.emitterDebugSphere && this.flameOrigin) {
+            this.emitterDebugSphere.position.copy(this.flameOrigin);
+            
+            // Make sure it's added to the scene
+            if (!this.emitterDebugSphere.parent && this.scene) {
+                this.scene.add(this.emitterDebugSphere);
+            }
+        }
     }
     
     // Override update method to include model position updates
@@ -735,6 +745,23 @@ class Flamethrower extends HumanWeapon {
         
         // Update model position
         this.updateModelPosition();
+        
+        // Debug nozzle tip position occasionally
+        if (this.debug && Math.random() < 0.01) {
+            if (this.weaponContainer && this.nozzleTipPosition) {
+                console.log('[DEBUG] Nozzle tip position (local):', 
+                    this.nozzleTipPosition.x.toFixed(2), 
+                    this.nozzleTipPosition.y.toFixed(2), 
+                    this.nozzleTipPosition.z.toFixed(2));
+                    
+                if (this.flameOrigin) {
+                    console.log('[DEBUG] Flame origin (world):', 
+                        this.flameOrigin.x.toFixed(2), 
+                        this.flameOrigin.y.toFixed(2), 
+                        this.flameOrigin.z.toFixed(2));
+                }
+            }
+        }
     }
     
     createParticleSystem() {
@@ -844,6 +871,22 @@ class Flamethrower extends HumanWeapon {
         const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
         this.debugSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
         this.debugSphere.position.copy(this.nozzleTipPosition);
+        
+        // Add a second debug sphere for visualizing the actual flame emission point
+        const emitterGeometry = new THREE.SphereGeometry(0.03, 8, 8);
+        const emitterMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        this.emitterDebugSphere = new THREE.Mesh(emitterGeometry, emitterMaterial);
+        
+        // Add debug helpers to the scene if we have one
+        if (this.scene) {
+            this.scene.add(this.debugSphere);
+            this.scene.add(this.emitterDebugSphere);
+            console.log('[DEBUG] Added debug helpers to scene');
+        } else if (this.model) {
+            // If no scene yet, add to model as fallback
+            this.model.add(this.debugSphere);
+            console.log('[DEBUG] Added debug helpers to model (scene not available)');
+        }
         
         // Add a line showing the flame direction
         const lineGeometry = new THREE.BufferGeometry();
@@ -998,20 +1041,51 @@ class Flamethrower extends HumanWeapon {
                 }
             }
             
-            // Get camera position
-            camera.getWorldPosition(emissionPosition);
-            
-            // Get camera direction
-            camera.getWorldDirection(emissionDirection);
-            
-            // Move the emission point slightly in front of the camera (0.5 units forward, 0.3 down, 0.2 right)
-            emissionPosition.add(
-                new THREE.Vector3(
-                    emissionDirection.x * 0.5 + 0.2, 
-                    emissionDirection.y * 0.5 - 0.3, 
-                    emissionDirection.z * 0.5
-                )
-            );
+            // Instead of using the camera position directly, use the nozzle tip position
+            if (this.weaponContainer && this.nozzleTipPosition) {
+                // Get camera position as starting point
+                camera.getWorldPosition(emissionPosition);
+                
+                // Get camera direction
+                camera.getWorldDirection(emissionDirection);
+                
+                // Calculate the world position of the nozzle tip
+                // The nozzle tip is at 0.15, -0.1, 0.35 in local model space
+                // For the simple geometric model the nozzle tip is at this.nozzleTipPosition
+                const nozzleWorldPos = new THREE.Vector3();
+                
+                // Create a vector for the nozzle tip in model-local space
+                const nozzleOffsetFromCamera = new THREE.Vector3();
+                
+                if (this.weaponContainer) {
+                    // Start with the container's position
+                    nozzleOffsetFromCamera.copy(this.weaponContainer.position);
+                    
+                    // Add the nozzle tip position offset
+                    // Adjust these values to match where particles should come from
+                    nozzleOffsetFromCamera.x += 0.15;  // Right side of model
+                    nozzleOffsetFromCamera.y += -0.1;  // Slightly down
+                    nozzleOffsetFromCamera.z += 0.35;  // Forward from the model (this is the key value)
+                    
+                    // Get the world position
+                    camera.localToWorld(nozzleWorldPos.copy(nozzleOffsetFromCamera));
+                    
+                    // Use this position instead of the camera position
+                    emissionPosition.copy(nozzleWorldPos);
+                }
+            } else {
+                // Fallback to the old method if we don't have weapon container
+                camera.getWorldPosition(emissionPosition);
+                
+                // Move the emission point slightly in front of the camera (0.5 units forward, 0.3 down, 0.2 right)
+                emissionPosition.add(
+                    new THREE.Vector3(
+                        emissionDirection.x * 0.5 + 0.2, 
+                        emissionDirection.y * 0.5 - 0.3, 
+                        emissionDirection.z * 0.5
+                    )
+                );
+            }
             
             // Store for reference
             this.flameOrigin.copy(emissionPosition);
@@ -1023,13 +1097,13 @@ class Flamethrower extends HumanWeapon {
                 this.createFlameLight();
             }
             
-            // Update flame light position
+            // Update flame light position - USE THE SAME EMISSION POSITION
             if (this.flameLight && this.useDynamicLighting) {
                 // Position the light at the emission point
                 this.flameLight.position.copy(emissionPosition);
                 
                 // Add a bit of offset in the direction of firing for better lighting effect
-                const lightOffset = emissionDirection.clone().multiplyScalar(2);
+                const lightOffset = emissionDirection.clone().multiplyScalar(1.0); // Reduced from 2.0 to 1.0 to keep light closer to nozzle
                 this.flameLight.position.add(lightOffset);
                 
                 // Force the light to update
@@ -1041,6 +1115,13 @@ class Flamethrower extends HumanWeapon {
                     this.ambientGlowLight.position.copy(emissionPosition);
                     this.ambientGlowLight.updateMatrix();
                     this.ambientGlowLight.updateMatrixWorld();
+                }
+                
+                if (this.debug) {
+                    console.log('[DEBUG] Updated flame light position:', 
+                        this.flameLight.position.x.toFixed(2), 
+                        this.flameLight.position.y.toFixed(2), 
+                        this.flameLight.position.z.toFixed(2));
                 }
             }
             

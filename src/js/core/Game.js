@@ -7,6 +7,7 @@ import { World } from '../world/World';
 
 export class Game {
     constructor(containerId) {
+        console.log('Game: Constructor called with containerId:', containerId);
         this.containerId = containerId;
         this.scene = null;
         this.camera = null;
@@ -22,6 +23,7 @@ export class Game {
         
         // Game state
         this.gameMode = 'third_person'; // Will be determined/assigned for asymmetrical gameplay
+        console.log('Game: Initial game mode:', this.gameMode);
         
         this._isTogglingMode = false;
         
@@ -29,6 +31,7 @@ export class Game {
     }
     
     init() {
+        console.log('Game: Starting initialization');
         const container = document.getElementById(this.containerId);
         if (!container) {
             console.error(`Container with ID '${this.containerId}' not found`);
@@ -44,7 +47,9 @@ export class Game {
         // Initialize asset loader first
         try {
             // Initialize asset loader and world
+            console.log('Game: Creating AssetLoader');
             this.assetLoader = new AssetLoader();
+            console.log('Game: Creating World');
             this.world = new World(this.scene);
             
             // Setup input manager with instructions
@@ -115,15 +120,24 @@ export class Game {
     }
     
     createNewPlayer() {
+        console.log('Game: Creating new player. Current game mode:', this.gameMode);
+        
+        // Ensure AssetLoader is initialized
+        if (!this.assetLoader) {
+            console.error('Game: AssetLoader not initialized!');
+            return;
+        }
+        
         // Clean up existing player if any
         if (this.player) {
+            console.log('Game: Cleaning up existing player');
             this.player.cleanup();
         }
         
         // Create player based on game mode
         try {
             if (this.gameMode === 'first_person') {
-                console.log('Creating first-person player');
+                console.log('Game: Creating first-person player');
                 
                 // Create the human player with first-person mode enabled
                 this.player = new HumanPlayer(this, {
@@ -137,23 +151,27 @@ export class Game {
                     }
                 });
                 
+                console.log('Game: Human player created');
+                
                 // Initialize physics with scene access for terrain detection
                 if (this.player.physics && typeof this.player.physics.setScene === 'function') {
+                    console.log('Game: Setting up player physics');
                     this.player.physics.setScene(this.scene);
                 }
                 
                 // Make sure first-person mode stays active (prevent auto-toggle)
                 if (this.player.fpCamera) {
+                    console.log('Game: Setting up first-person camera');
                     // Delay slightly to ensure everything is ready
                     setTimeout(() => {
                         if (this.player && this.player.isFirstPerson && this.player.fpCamera) {
-                            console.log('Ensuring first-person camera is active');
+                            console.log('Game: Ensuring first-person camera is active');
                             this.setActiveCamera(this.player.fpCamera);
                         }
                     }, 50);
                 }
             } else {
-                console.log('Creating third-person player');
+                console.log('Game: Creating third-person player');
                 
                 // Create the bunny player (default is third-person)
                 this.player = new BunnyPlayer(this, {
@@ -162,20 +180,23 @@ export class Game {
                     controls: { sensitivity: 0.0025 }
                 });
                 
+                console.log('Game: Bunny player created');
+                
                 // Initialize physics with scene access for terrain detection
                 if (this.player.physics && typeof this.player.physics.setScene === 'function') {
+                    console.log('Game: Setting up player physics');
                     this.player.physics.setScene(this.scene);
                 }
             }
             
-            console.log('Player created:', this.gameMode);
+            console.log('Game: Player created successfully:', this.gameMode);
             
             // Initialize controls immediately if instructions are not shown
             if (this.inputManager && 
                 this.inputManager.instructions && 
                 this.inputManager.instructions.style.display === 'none') {
                 
-                console.log('Auto-initializing player controls');
+                console.log('Game: Auto-initializing player controls');
                 this.player.onInstructionsDismissed();
             }
         } catch (error) {

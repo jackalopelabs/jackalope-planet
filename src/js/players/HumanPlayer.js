@@ -65,28 +65,59 @@ class HumanPlayer extends Player {
     }
     
     init() {
+        console.log('HumanPlayer: Starting initialization');
+        
+        // Ensure we have access to the game and asset loader
+        if (!this.game || !this.game.assetLoader) {
+            console.error('HumanPlayer: Game or AssetLoader not available!');
+            return;
+        }
+        
         // Create human model
-        this.model = this.game.assetLoader.createHumanModel();
-        this.model.position.set(0, 1.0, 0); // Full height above ground
-        
-        // Enable shadows for the human model
-        this.model.traverse(node => {
-            if (node instanceof THREE.Mesh) {
-                node.castShadow = true;
-                node.receiveShadow = true;
+        console.log('HumanPlayer: Requesting human model from AssetLoader');
+        try {
+            this.model = this.game.assetLoader.createHumanModel();
+            
+            if (!this.model) {
+                console.error('HumanPlayer: Failed to create human model');
+                return;
             }
-        });
-        
-        this.scene.add(this.model);
-        this.position.copy(this.model.position);
-        
-        console.log('Human model initialized at position:', this.model.position);
-        
-        // Set initial camera position (third-person)
-        this.updateCameraPosition();
-        
-        // Initialize weapon system
-        this.initWeapon();
+            
+            console.log('HumanPlayer: Model created successfully');
+            this.model.position.set(0, 1.0, 0); // Full height above ground
+            console.log('HumanPlayer: Model position set to:', this.model.position);
+            
+            // Enable shadows for the human model
+            console.log('HumanPlayer: Setting up shadows for model');
+            this.model.traverse(node => {
+                if (node instanceof THREE.Mesh) {
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                    console.log('HumanPlayer: Enabled shadows for mesh:', node.uuid);
+                }
+            });
+            
+            console.log('HumanPlayer: Adding model to scene');
+            this.scene.add(this.model);
+            this.position.copy(this.model.position);
+            
+            console.log('HumanPlayer: Model added to scene. Position:', this.model.position);
+            console.log('HumanPlayer: Model parent:', this.model.parent ? this.model.parent.uuid : 'none');
+            console.log('HumanPlayer: Model visible:', this.model.visible);
+            console.log('HumanPlayer: Model children count:', this.model.children.length);
+            
+            // Set initial camera position (third-person)
+            console.log('HumanPlayer: Setting up initial camera position');
+            this.updateCameraPosition();
+            
+            // Initialize weapon system
+            console.log('HumanPlayer: Initializing weapon system');
+            this.initWeapon();
+            
+            console.log('HumanPlayer: Initialization complete');
+        } catch (error) {
+            console.error('HumanPlayer: Error during initialization:', error);
+        }
     }
     
     /**
@@ -139,15 +170,28 @@ class HumanPlayer extends Player {
         this.fpCamera.rotation.set(0, 0, 0);
         this.fpCamera.updateProjectionMatrix();
         
-        // Hide player model in first-person
+        // Hide player model parts in first-person, except arms
         this.model.traverse(child => {
-            if (child.isMesh) {
-                child.layers.set(1); // Put on layer 1 to hide from fpCamera
+            if (child instanceof THREE.Mesh) {
+                // Check if this is an arm mesh (based on its position)
+                const isArm = child.name && child.name.toLowerCase().includes('arm');
+                const position = new THREE.Vector3();
+                child.getWorldPosition(position);
+                const isArmPosition = Math.abs(position.x) > 0.3 && position.y > 0.5 && position.y < 1.3;
+                
+                if (isArm || isArmPosition) {
+                    // Put arms on layer 0 so they're visible in first-person
+                    child.layers.set(0);
+                    console.log('Keeping arm visible in first-person:', child.name || 'unnamed mesh');
+                } else {
+                    // Put other body parts on layer 1 to hide from fpCamera
+                    child.layers.set(1);
+                }
             }
         });
         
-        // fpCamera only renders layer 0 (not player model)
-        this.fpCamera.layers.set(0); // Reset to only see layer 0
+        // fpCamera only renders layer 0 (not player model, except arms)
+        this.fpCamera.layers.set(0);
         
         console.log('First-person camera setup complete');
         

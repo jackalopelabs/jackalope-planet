@@ -8,7 +8,10 @@ import { Networking } from '../utils/Networking';
 
 export class Game {
     constructor(containerId) {
-        console.log('Game: Constructor called with containerId:', containerId);
+        // Use jpLog if available, otherwise fallback to console.log
+        const log = window.jpLog || console.log;
+        log('Game: Constructor called with containerId: ' + containerId, 'multiplayer');
+        
         this.containerId = containerId;
         this.scene = null;
         this.camera = null;
@@ -31,7 +34,7 @@ export class Game {
         
         // Game state
         this.gameMode = 'third_person'; // Will be determined/assigned for asymmetrical gameplay
-        console.log('Game: Initial game mode:', this.gameMode);
+        log('Game: Initial game mode: ' + this.gameMode, 'multiplayer');
         
         this._isTogglingMode = false;
         
@@ -39,10 +42,16 @@ export class Game {
     }
     
     init() {
-        console.log('Game: Starting initialization');
+        // Use jpLog if available, otherwise fallback to console.log
+        const log = window.jpLog || console.log;
+        const logError = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'error') : 
+            console.error;
+            
+        log('Game: Starting initialization', 'debug');
         const container = document.getElementById(this.containerId);
         if (!container) {
-            console.error(`Container with ID '${this.containerId}' not found`);
+            logError(`Container with ID '${this.containerId}' not found`);
             return;
         }
         
@@ -55,9 +64,9 @@ export class Game {
         // Initialize asset loader first
         try {
             // Initialize asset loader and world
-            console.log('Game: Creating AssetLoader');
+            log('Game: Creating AssetLoader', 'debug');
             this.assetLoader = new AssetLoader();
-            console.log('Game: Creating World');
+            log('Game: Creating World', 'debug');
             this.world = new World(this.scene);
             
             // Initialize networking
@@ -76,7 +85,7 @@ export class Game {
             // Start animation loop
             this.animate();
         } catch (error) {
-            console.error('Error initializing game:', error);
+            logError('Error initializing game: ' + error.message);
         }
     }
     
@@ -140,11 +149,10 @@ export class Game {
      * @returns {Player} The created player instance
      */
     createNewPlayer(options = {}) {
-        console.log('%c PLAYER CREATE - Original input options:', 'background: #222; color: #ff0; padding: 5px;');
-        console.log(options);
+        const DEBUG = window.DEBUG_MODE === true;
+        const log = window.jpLog || console.log;
         
         // CRITICAL FIX: Create a clean copy of options to prevent external modification
-        // and directly access keys of options with safety checks
         const isLocalValue = options.isLocal === true || options.isLocal === 'true';
         const isActiveValue = options.isActive === true || options.isActive === 'true';
         
@@ -152,29 +160,22 @@ export class Game {
         const playerOptions = {
             team: options.team || (this.gameMode === 'first_person' ? 'merc' : 'jackalope'),
             id: options.id || `player_${Math.floor(Math.random() * 10000)}`,
-            // CRITICAL FIX: Default initial player must be isLocal=true, otherwise no player will get input
+            // Default initial player must be isLocal=true, otherwise no player will get input
             isLocal: isLocalValue || this.players.length === 0, // First player is local by default
             isActive: isActiveValue || this.players.length === 0 // First player is active by default
         };
         
-        // SUPER CRITICAL: Force values for special merc players
+        // Force values for special merc players
         if (playerOptions.team === 'merc' && playerOptions.id && playerOptions.id.startsWith('merc_')) {
-            console.log('%c 🛑 CRITICAL: Detected Merc player - forcing isLocal=true, isActive=true', 
-                       'background: #f00; color: white; font-weight: bold; padding: 5px;');
             playerOptions.isLocal = true;
             playerOptions.isActive = true;
         }
         
-        // CRITICAL FIX: Force first player to always be local
+        // Force first player to always be local
         if (this.players.length === 0) {
-            console.log('%c 🛑 CRITICAL: This is the first player - forcing isLocal=true, isActive=true', 
-                       'background: #f00; color: white; font-weight: bold; padding: 5px;');
             playerOptions.isLocal = true;
             playerOptions.isActive = true;
         }
-        
-        console.log('%c PLAYER CREATE - FINAL options after processing:', 'background: #222; color: #0f0; padding: 5px;');
-        console.log(playerOptions);
         
         // Determine player type based on team
         const isFirstPerson = playerOptions.team === 'merc';
@@ -184,11 +185,9 @@ export class Game {
             this.gameMode = 'third_person';
         }
         
-        console.log('Game: Creating player with team:', playerOptions.team, 'isFirstPerson:', isFirstPerson);
-        
         // Ensure AssetLoader is initialized
         if (!this.assetLoader) {
-            console.error('Game: AssetLoader not initialized!');
+            log('AssetLoader not initialized!', 'error');
             return null;
         }
         
@@ -197,9 +196,7 @@ export class Game {
         
         try {
             if (playerOptions.team === 'merc') {
-                console.log('Game: Creating Merc (Human) player');
-                
-                // CRITICAL FIX: Pass the isLocal and isActive values directly from our clean options object
+                // Create a Human player
                 newPlayer = new HumanPlayer(this, {
                     isFirstPerson: true,
                     physics: { gravity: 9.8 },
@@ -209,27 +206,21 @@ export class Game {
                         invertY: false,
                         firstPersonMode: true
                     },
-                    isLocal: playerOptions.isLocal,  // DIRECT ACCESS
-                    isActive: playerOptions.isActive  // DIRECT ACCESS
+                    isLocal: playerOptions.isLocal,
+                    isActive: playerOptions.isActive
                 });
-                
-                console.log('Game: Human player created');
             } else {
-                console.log('Game: Creating Jackalope (Bunny) player');
-                
-                // CRITICAL FIX: Pass the isLocal and isActive values directly from our clean options object
+                // Create a Bunny player
                 newPlayer = new BunnyPlayer(this, {
                     physics: { gravity: 7.5 },
                     movement: { movementSpeed: 7 },
                     controls: { sensitivity: 0.0025 },
-                    isLocal: playerOptions.isLocal,  // DIRECT ACCESS
-                    isActive: playerOptions.isActive  // DIRECT ACCESS
+                    isLocal: playerOptions.isLocal,
+                    isActive: playerOptions.isActive
                 });
-                
-                console.log('Game: Bunny player created');
             }
             
-            // CRITICAL: Directly set these properties on the player
+            // Directly set these properties on the player
             if (newPlayer) {
                 Object.defineProperty(newPlayer, 'id', { 
                     value: playerOptions.id,
@@ -245,36 +236,40 @@ export class Game {
                 newPlayer.isLocal = playerOptions.isLocal;
                 newPlayer.isActive = playerOptions.isActive;
                 
-                console.log(`Game: Player created with id=${newPlayer.id}, team=${newPlayer.team}, isLocal=${newPlayer.isLocal}, isActive=${newPlayer.isActive}`);
+                if (DEBUG) {
+                    log(`Player created: ${newPlayer.id}, team=${newPlayer.team}`, 'debug');
+                }
             }
             
             // Initialize physics with scene access for terrain detection
             if (newPlayer.physics && typeof newPlayer.physics.setScene === 'function') {
-                console.log('Game: Setting up player physics');
                 newPlayer.physics.setScene(this.scene);
             }
             
             // Add to players array
             this.players.push(newPlayer);
-            console.log(`Game: Added player to players array. Count: ${this.players.length}`);
             
             // If this is the local player, save the ID
             if (playerOptions.isLocal) {
                 this.localPlayerId = newPlayer.id;
             }
             
-            // CRITICAL FIX: If this needs to be the active player
+            // If this needs to be the active player
             if (playerOptions.isActive) {
-                console.log(`Game: Setting player ${newPlayer.id} as active because isActive=${playerOptions.isActive}`);
-                
                 // Deactivate any existing active player
                 if (this.player && this.player !== newPlayer) {
-                    console.log(`Game: Deactivating previous active player: ${this.player.id}`);
                     this.player.isActive = false;
                 }
                 
-                // Set this as the active player before calling setActivePlayer
+                // Set this as the active player
                 this.setActivePlayer(newPlayer);
+            } else if (this.players.length > 0) {
+                // If no active player is set but we have players, set the first one as active
+                this.player = this.players.find(p => p.isLocal) || this.players[0];
+                this.player.isActive = true;
+                
+                // Update everything that depends on the active player
+                this.setActivePlayer(this.player);
             }
             
             // Initialize controls immediately if instructions are not shown
@@ -283,13 +278,12 @@ export class Game {
                 this.inputManager.instructions.style.display === 'none' &&
                 newPlayer.isLocal) {
                 
-                console.log('Game: Auto-initializing player controls');
                 newPlayer.onInstructionsDismissed();
             }
             
             return newPlayer;
         } catch (error) {
-            console.error('Error creating player:', error);
+            log('Error creating player: ' + error.message, 'error');
             return null;
         }
     }
@@ -429,14 +423,16 @@ export class Game {
                     
                     // Set the camera
                     this.setActiveCamera(finalCamera);
-                    console.log(`%c Final camera set: ${finalCamera.uuid}`, 'color: #9f9;');
+                    const log = window.jpLog || console.log;
+                    log(`Final camera set: ${finalCamera.uuid}`, 'debug');
                     
                     // Request pointer lock for first-person mode with retries
                     if (this.gameMode === 'first_person') {
                         this.requestPointerLockWithRetry();
                     }
                 } else {
-                    console.warn('Player is no longer active, skipping delayed camera activation');
+                    const log = window.jpLog || console.log;
+                    log('Player is no longer active, skipping delayed camera activation', 'warning');
                 }
             }, 100); // Slightly longer delay to ensure camera creation
         }
@@ -453,7 +449,8 @@ export class Game {
             this.inputManager.moveLeft = false;
             this.inputManager.moveRight = false;
             
-            console.log(`%c Reset input manager - isFirstPerson: ${this.inputManager.isFirstPerson}`, 'color: #afa;');
+            const log = window.jpLog || console.log;
+            log(`Reset input manager - isFirstPerson: ${this.inputManager.isFirstPerson}`, 'debug');
         }
         
         // Update player info overlay
@@ -469,16 +466,18 @@ export class Game {
      * Helper method to request pointer lock with retry logic
      */
     requestPointerLockWithRetry(attempts = 0, maxAttempts = 5) {
+        const log = window.jpLog || console.log;
+        
         if (!this.container || attempts >= maxAttempts) {
             if (attempts >= maxAttempts) {
-                console.warn(`%c Failed to acquire pointer lock after ${maxAttempts} attempts`, 'color: #f88;');
+                log(`Failed to acquire pointer lock after ${maxAttempts} attempts`, 'warning');
             }
             return;
         }
         
         // Only request if not already locked
         if (document.pointerLockElement !== this.container) {
-            console.log(`%c 🔒 Requesting pointer lock (attempt ${attempts + 1})`, 'color: #afa;');
+            log(`🔒 Requesting pointer lock (attempt ${attempts + 1})`, 'debug');
             
             try {
                 this.container.requestPointerLock();
@@ -486,14 +485,14 @@ export class Game {
                 // Check if it worked after a small delay
                 setTimeout(() => {
                     if (document.pointerLockElement !== this.container) {
-                        console.log(`%c Pointer lock attempt ${attempts + 1} failed, retrying...`, 'color: #f88;');
+                        log(`Pointer lock attempt ${attempts + 1} failed, retrying...`, 'debug');
                         this.requestPointerLockWithRetry(attempts + 1, maxAttempts);
                     } else {
-                        console.log('%c ✅ Pointer lock acquired successfully', 'color: #8f8;');
+                        log('✅ Pointer lock acquired successfully', 'debug');
                     }
                 }, 100);
             } catch (e) {
-                console.error('Error requesting pointer lock:', e);
+                log('Error requesting pointer lock: ' + e.message, 'error');
             }
         }
     }
@@ -512,9 +511,10 @@ export class Game {
      * @param {string} playerId - ID of the player to remove
      */
     removePlayer(playerId) {
+        const log = window.jpLog || console.log;
         const playerIndex = this.players.findIndex(p => p.id === playerId);
         if (playerIndex === -1) {
-            console.error(`Game: Player with ID ${playerId} not found`);
+            log(`Game: Player with ID ${playerId} not found`, 'error');
             return;
         }
         
@@ -526,7 +526,7 @@ export class Game {
         
         // Remove from players array
         this.players.splice(playerIndex, 1);
-        console.log(`Game: Removed player ${playerId}. Remaining: ${this.players.length}`);
+        log(`Game: Removed player ${playerId}. Remaining: ${this.players.length}`, 'debug');
         
         // If this was the active player, set a new active player
         if (this.player === player && this.players.length > 0) {
@@ -538,55 +538,58 @@ export class Game {
      * Switch to the next player (for God Mode)
      */
     cycleToNextPlayer() {
-        console.log('%c 🔄 ATTEMPTING TO CYCLE TO NEXT PLAYER - isGodMode:', 'color: #9900ff; font-size: 14px;', this.isGodMode);
+        const log = window.jpLog || console.log;
+        log('🔄 ATTEMPTING TO CYCLE TO NEXT PLAYER - isGodMode: ' + this.isGodMode, 'debug');
         
         // Only works in God Mode
         if (!this.isGodMode) {
-            console.log('%c ❌ God Mode is disabled, cannot cycle players', 'color: red');
+            log('❌ God Mode is disabled, cannot cycle players', 'warning');
             return this.gameMode;
         }
         
         // If no players, do nothing
         if (this.players.length === 0) {
-            console.log('%c ❌ No players to cycle through', 'color: red');
+            log('❌ No players to cycle through', 'warning');
             return this.gameMode;
         }
         
         // Find current player index
         const currentIndex = this.players.indexOf(this.player);
-        console.log(`Current player index: ${currentIndex}, Total players: ${this.players.length}`);
-        
+        log(`Current player index: ${currentIndex}, Total players: ${this.players.length}`, 'debug');
+
         // Get next player index (circular)
         const nextIndex = (currentIndex + 1) % this.players.length;
-        
+
         // Debug: Log all players and their IDs before switching
-        console.log('%c 📊 Available players before switching:', 'background: #333; color: #0ff;');
+        log('📊 Available players before switching:', 'debug');
         this.players.forEach((p, idx) => {
-            console.log(`%c Player ${idx}: id=${p.id}, team=${p.team}, isLocal=${p.isLocal}, active=${p === this.player}`, 
-                        p === this.player ? 'color: yellow; font-weight: bold;' : 'color: #aaa;');
+            log(`Player ${idx}: id=${p.id}, team=${p.team}, isLocal=${p.isLocal}, active=${p === this.player}`, 
+                p === this.player ? 'debug' : 'debug');
         });
-        
+
         // CRITICAL FIX: Make sure the current player knows it's no longer active
         if (this.player) {
-            console.log(`%c 📊 Setting current player ${this.player.id} to inactive`, 'color: #f88;');
+            log(`📊 Setting current player ${this.player.id} to inactive`, 'debug');
             this.player.isActive = false;
         }
-        
+
         // Set next player as active
         this.setActivePlayer(this.players[nextIndex]);
-        
+
         // CRITICAL FIX: Make sure the new player knows it's active
         if (this.player) {
-            console.log(`%c 📊 Setting new player ${this.player.id} to active`, 'color: #8f8;');
+            log(`📊 Setting new player ${this.player.id} to active`, 'debug');
             this.player.isActive = true;
         }
-        
-        console.log(`%c 🎮 Cycled to player ${this.player.id}, team: ${this.player.team}`, 'color: #00ff00');
-        
+
+        log(`🎮 Cycled to player ${this.player.id}, team: ${this.player.team}`, 'debug');
+
         return this.gameMode;
     }
     
     switchPlayerMode() {
+        const log = window.jpLog || console.log;
+        
         // If in God Mode, cycle to next player instead of changing modes
         if (this.isGodMode && this.players.length > 1) {
             return this.cycleToNextPlayer();
@@ -597,11 +600,11 @@ export class Game {
         const targetMode = this.gameMode === 'first_person' ? 'third_person' : 'first_person';
         this.gameMode = targetMode;
         
-        console.log(`Switching player mode from ${previousMode} to ${this.gameMode}`);
+        log(`Switching player mode from ${previousMode} to ${this.gameMode}`, 'debug');
         
         // Add a flag to prevent double-toggling
         if (this._isTogglingMode) {
-            console.warn('Already toggling mode, ignoring redundant request');
+            log('Already toggling mode, ignoring redundant request', 'warning');
             return this.gameMode;
         }
         
@@ -638,7 +641,7 @@ export class Game {
                     // Small delay to ensure player is fully initialized
                     setTimeout(() => {
                         if (this.container && document.pointerLockElement !== this.container) {
-                            console.log('Requesting pointer lock after switching to first-person mode');
+                            log('Requesting pointer lock after switching to first-person mode', 'debug');
                             this.container.requestPointerLock();
                         }
                     }, 100);
@@ -698,61 +701,33 @@ export class Game {
         requestAnimationFrame(() => this.animate());
         
         const delta = this.clock.getDelta();
+        const log = window.jpLog || console.log;
+        const DEBUG = window.DEBUG_MODE === true;
         
-        // DIAGNOSTIC: Occasionally run a full diagnosis of the player state
-        if (Math.random() < 0.005) { // About once every 200 frames
-            this.diagnosePlayerState();
+        // DIAGNOSTIC: Run a full diagnosis of the player state extremely infrequently
+        if (Math.random() < 0.00001) { // Reduced another 10x (from 0.0001 to 0.00001)
+            if (DEBUG) {
+                this.diagnosePlayerState();
+            }
         }
         
-        // Debug: Occasionally log active player state with MUCH MORE VISIBLE output
-        if (Math.random() < 0.02) { // Increased frequency - approximately once every 50 frames
-            console.log(
-                '%c 🎯 GAME ANIMATION LOOP - ACTIVE PLAYER:', 
-                'background: #224; color: #ffa; font-size: 14px; padding: 5px;',
-                this.player ? `${this.player.id} (${this.player.team})` : 'none'
-            );
-            
-            // Add keyboard state info
-            if (this.inputManager) {
-                console.log(
-                    '%c 🎮 KEYBOARD STATE:', 
-                    'background: #242; color: #afa; padding: 3px;',
-                    `W:${this.inputManager.keys.w ? '✅' : '❌'} ` +
-                    `A:${this.inputManager.keys.a ? '✅' : '❌'} ` +
-                    `S:${this.inputManager.keys.s ? '✅' : '❌'} ` +
-                    `D:${this.inputManager.keys.d ? '✅' : '❌'}`
-                );
-            }
-                      
-            // CRITICAL FIX: Check for isActive mismatches across all players
+        // Debug: Log active player state only once per several minutes and only in debug mode
+        if (Math.random() < 0.00005 && DEBUG) { // Reduced 10x (from 0.0005 to 0.00005)
+            // CRITICAL FIX: Check for isActive mismatches across all players silently
             let foundActiveMismatch = false;
             this.players.forEach(player => {
                 const shouldBeActive = (player === this.player);
                 if (player.isActive !== shouldBeActive) {
-                    console.log(`%c ⚠️ Player active state mismatch: ${player.id} (isActive=${player.isActive}, should be ${shouldBeActive})`, 
-                                'background: red; color: white;');
                     foundActiveMismatch = true;
-                    // Fix the mismatch
+                    // Fix the mismatch without logging
                     player.isActive = shouldBeActive;
                 }
             });
-            
-            if (foundActiveMismatch) {
-                console.log('%c ✅ Fixed player active state mismatches', 'color: #0f0;');
-            }
         }
         
         // Update world
         if (this.world) {
             this.world.update(delta);
-        }
-        
-        // CRITICAL FIX: Log which player is getting input with a MUCH MORE VISIBLE format
-        if (Math.random() < 0.02 && this.player) { // Increased to once every 50 frames
-            console.log(
-                `%c 🎮 GAME SENDING INPUT TO: ${this.player.id} (${this.player.team})`, 
-                'background: #050; color: #afa; font-size: 14px; padding: 5px;'
-            );
         }
         
         // CRITICAL: Add special handling for Merc players
@@ -771,69 +746,50 @@ export class Game {
                     }
                 }
             
-                // CRITICAL FIX: Ensure player.isActive matches the game's active player state
+                // CRITICAL FIX: Ensure player.isActive matches the game's active player state without logging
                 if (player === this.player && !player.isActive) {
-                    console.log(`%c 🛠️ Fixing active state for player: ${player.id}`, 'background: #a00; color: white; padding: 3px;');
                     player.isActive = true;
                 } else if (player !== this.player && player.isActive) {
-                    console.log(`%c 🛠️ Fixing inactive state for player: ${player.id}`, 'background: #a00; color: white; padding: 3px;');
                     player.isActive = false;
                 }
                 
                 // Only update input for the active local player
                 const isActiveLocal = (player === this.player && player.isLocal);
                 
-                // Debug: Occasionally log player processing status with MORE VISIBLE output
-                if (Math.random() < 0.005 && this.players.length > 1) { // Rare but more visible
-                    console.log(
-                        `%c ${isActiveLocal ? '✅' : '❌'} Player: ${player.id} (${player.team}) - ${isActiveLocal ? 'WITH' : 'without'} input`,
-                        `background: ${isActiveLocal ? '#252' : '#522'}; color: ${isActiveLocal ? '#afa' : '#faa'}; padding: 3px;`
-                    );
-                }
-                
                 // CRITICAL FIX: Wrap player update in try/catch to prevent game crashes
                 try {
                     player.update(delta, isActiveLocal);
                 } catch (error) {
                     playersWithErrors++;
-                    console.error(`%c 🚨 ERROR updating player ${player.id}:`, 'background: red; color: white; padding: 3px;', error);
-                    
-                    // Log extra debugging info to help diagnose the issue
-                    console.log('%c Debug info for failed player update:', 'color: orange;');
-                    console.log('Player object:', player);
-                    console.log('Player team:', player.team);
-                    console.log('Player position:', player.position);
-                    console.log('Has physics:', !!player.physics);
-                    console.log('Has movement:', !!player.movement);
-                    console.log('Has controls:', !!player.controls);
-                    console.log('Is active local:', isActiveLocal);
+                    // Only log the first few errors to avoid spamming
+                    if (playersWithErrors <= 3) {
+                        log(`Error updating player ${player.id}: ${error.message}`, 'error');
+                    }
                     
                     // Try to recover if possible - reinitialize components
                     if (!player.physics && typeof player.initPhysics === 'function') {
-                        console.log(`%c 🔄 Attempting to recover player ${player.id} by reinitializing physics`, 'color: #aaf;');
                         try {
                             player.initPhysics();
                         } catch (e) {
-                            console.error('Failed to recover player physics:', e);
+                            // Silent catch
                         }
                     }
                 }
             } catch (error) {
                 playersWithErrors++;
-                console.error(`%c 🚨 CRITICAL ERROR in Game.animate with player ${player.id}:`, 'background: red; color: white; padding: 3px;', error);
+                if (playersWithErrors <= 3) {
+                    log(`Critical error in Game.animate with player ${player.id}: ${error.message}`, 'error');
+                }
             }
         });
         
-        // Log if we had errors
-        if (playersWithErrors > 0) {
-            console.warn(`%c 📊 Game update had errors with ${playersWithErrors}/${this.players.length} players`, 'color: orange;');
+        // Log if we had errors (only once)
+        if (playersWithErrors > 0 && playersWithErrors <= 3) {
+            log(`Game update had errors with ${playersWithErrors}/${this.players.length} players`, 'warning');
         }
         
-        // CRITICAL: Special case to force-update mercs if no active merc was found
+        // CRITICAL: Special case to force-update mercs if no active merc was found (no logging)
         if (!mercPlayerFound && activeMercPlayer) {
-            console.log(`%c 🚨 CRITICAL: No active Merc found but we have an inactive one: ${activeMercPlayer.id}`, 
-                       'background: red; color: white; padding: 5px;');
-            
             // Force activate the merc and make it active
             activeMercPlayer.isActive = true;
             activeMercPlayer.isLocal = true;
@@ -843,7 +799,7 @@ export class Game {
             try {
                 activeMercPlayer.update(delta, true);
             } catch (error) {
-                console.error(`Failed to update forced merc player:`, error);
+                // Silent catch to prevent console spam
             }
         }
         
@@ -853,7 +809,7 @@ export class Game {
                 this.renderer.render(this.scene, this.camera);
             }
         } catch (error) {
-            console.error(`%c 🚨 ERROR in renderer:`, 'background: red; color: white; padding: 3px;', error);
+            log(`Error in renderer: ${error.message}`, 'error');
         }
     }
     
@@ -867,7 +823,10 @@ export class Game {
             return;
         }
         
-        console.log('Setting active camera:', camera.type, camera.uuid);
+        // Only log in debug mode
+        if (window.DEBUG_MODE) {
+            console.log('Setting active camera:', camera.type, camera.uuid);
+        }
         
         // Save the camera reference
         this.camera = camera;
@@ -876,7 +835,11 @@ export class Game {
         if (this.container) {
             camera.aspect = this.container.clientWidth / this.container.clientHeight;
             camera.updateProjectionMatrix();
-            console.log('Updated camera aspect ratio:', camera.aspect);
+            
+            // Only log in debug mode
+            if (window.DEBUG_MODE) {
+                console.log('Updated camera aspect ratio:', camera.aspect);
+            }
         } else {
             console.warn('Cannot update camera aspect ratio: container is null');
         }
@@ -1048,117 +1011,59 @@ export class Game {
      * @param {boolean} forceFix - If true, will force fix player states even if no mismatch is detected
      */
     diagnosePlayerState(forceFix = false) {
-        console.log('%c🔍 RUNNING PLAYER STATE DIAGNOSIS', 'background: #228; color: white; font-size: 14px; padding: 5px;');
+        const log = window.jpLog || console.log;
+        
+        // Only log in debug mode and with minimal output
+        const DEBUG = window.DEBUG_MODE === true;
         
         if (!this.players || this.players.length === 0) {
-            console.log('%c No players found!', 'color: red');
+            log('No players found!', 'error');
             return;
         }
         
-        // Check active player reference
-        console.log('%c Game active player:', 'color: #afa;', 
-            this.player ? `${this.player.id} (${this.player.team})` : 'None');
-            
-        // Check all players and their states
-        console.log('%c All Players:', 'color: #aaf;');
-        
+        // Count stats silently without logging
         let activePlayerCount = 0;
         let localPlayerCount = 0;
         let activeMismatchFound = false;
         
-        this.players.forEach((player, index) => {
+        // Check all players for mismatches without logging details
+        this.players.forEach(player => {
             const isTheActivePlayer = (player === this.player);
             const hasActiveFlag = player.isActive === true;
             const hasLocalFlag = player.isLocal === true;
             
-            // Count players by state
             if (hasActiveFlag) activePlayerCount++;
             if (hasLocalFlag) localPlayerCount++;
             
-            // Check for mismatches
-            const hasActiveMismatch = isTheActivePlayer !== hasActiveFlag;
-            if (hasActiveMismatch) activeMismatchFound = true;
-            
-            // Log player state
-            console.log(
-                `%c Player ${index}: ${player.id} (${player.team}) - ` +
-                `Active: ${hasActiveFlag ? '✅' : '❌'} ` +
-                `Local: ${hasLocalFlag ? '✅' : '❌'} ` +
-                `Game.player reference: ${isTheActivePlayer ? '✅' : '❌'} ` +
-                `${hasActiveMismatch ? '⚠️ MISMATCH' : ''}`,
-                hasActiveMismatch ? 'color: #f55; font-weight: bold;' : 
-                hasActiveFlag ? 'color: #5f5; font-weight: bold;' : 'color: #aaa;'
-            );
-            
-            // Check camera state for the player
-            if (player.camera) {
-                console.log(`   - Has third-person camera: ${player.camera ? '✅' : '❌'}`);
-            }
-            if (typeof player.setupFirstPersonCamera === 'function') {
-                console.log(`   - Has first-person camera: ${player.fpCamera ? '✅' : '❌'}`);
+            if (isTheActivePlayer !== hasActiveFlag) {
+                activeMismatchFound = true;
             }
         });
         
-        // Summary statistics
-        console.log(`%c Total players: ${this.players.length}, Active: ${activePlayerCount}, Local: ${localPlayerCount}`,
-            'color: #aaf;');
-            
-        // Check input manager state
-        if (this.inputManager) {
-            console.log('%c Input Manager State:', 'color: #faa;');
-            console.log(`   - First Person Mode: ${this.inputManager.isFirstPerson ? '✅' : '❌'}`);
-            console.log(`   - Movement Keys: W:${this.inputManager.keys.w ? '✅' : '❌'} ` +
-                       `A:${this.inputManager.keys.a ? '✅' : '❌'} ` +
-                       `S:${this.inputManager.keys.s ? '✅' : '❌'} ` +
-                       `D:${this.inputManager.keys.d ? '✅' : '❌'}`);
+        // Super minimal logging, only if necessary
+        if (DEBUG && (activeMismatchFound || forceFix)) {
+            log('Player state inconsistency detected', 'warning');
         }
         
         // Fix mismatches if found or if force fix is enabled
         if (activeMismatchFound || forceFix) {
-            console.log('%c' + (forceFix ? '🔧 FORCE FIXING ALL PLAYER STATES' : '⚠️ FIXING PLAYER STATE MISMATCHES'), 
-                       'background: #a30; color: white; padding: 3px;');
-            
-            // First deactivate all players
+            // Silently fix issues
             this.players.forEach(player => {
-                player.isActive = false;
+                player.isActive = (player === this.player);
             });
             
-            // Now activate only the correct player
-            if (this.player) {
-                this.player.isActive = true;
-                console.log(`%c ✅ Set player ${this.player.id} as the only active player`, 'color: #5f5;');
-                
-                // Make sure camera is correctly set for the player type
-                if (forceFix) {
-                    const targetCamera = (this.player.team === 'merc' && this.player.fpCamera) 
-                        ? this.player.fpCamera 
-                        : this.player.camera || this.camera;
-                        
-                    if (targetCamera) {
-                        console.log(`%c 📷 Force setting camera to ${this.player.team === 'merc' ? 'first-person' : 'third-person'} mode`, 
-                                  'color: #5ff;');
-                        this.setActiveCamera(targetCamera);
-                    }
-                    
-                    // Make sure input manager settings match player type
-                    if (this.inputManager) {
-                        const shouldBeFirstPerson = (this.player.team === 'merc');
-                        this.inputManager.isFirstPerson = shouldBeFirstPerson;
-                        console.log(`%c 🎮 Force set input manager to ${shouldBeFirstPerson ? 'first-person' : 'third-person'} mode`, 
-                                  'color: #5ff;');
-                    }
-                }
-            } else if (this.players.length > 0) {
-                // If no active player is set but we have players, set the first one as active
+            // If there's no active player but we have players, set the first one
+            if (!this.player && this.players.length > 0) {
                 this.player = this.players.find(p => p.isLocal) || this.players[0];
                 this.player.isActive = true;
-                console.log(`%c ✅ Auto-selected player ${this.player.id} as active`, 'color: #5f5;');
+                
+                if (DEBUG) {
+                    log('Auto-selected player as active', 'info');
+                }
                 
                 // Update everything that depends on the active player
                 this.setActivePlayer(this.player);
             }
         }
-        
-        console.log('%c END OF DIAGNOSIS', 'background: #228; color: white; font-size: 12px; padding: 3px;');
     }
 }

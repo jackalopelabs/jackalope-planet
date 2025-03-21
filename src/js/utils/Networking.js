@@ -7,6 +7,15 @@ class Networking {
         this.clientId = null;
         this.serverUrl = null;
         
+        // Set up logging
+        this.log = window.jpLog || console.log;
+        this.logWarn = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'warning') : 
+            console.warn;
+        this.logError = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'error') : 
+            console.error;
+        
         // Callbacks
         this.onConnect = () => {};
         this.onDisconnect = () => {};
@@ -46,7 +55,7 @@ class Networking {
             // Mock a successful connection
             this.isConnected = true;
             this.clientId = `client_${Math.floor(Math.random() * 10000)}`;
-            console.log(`[Networking] Mock connection successful. Client ID: ${this.clientId}`);
+            this.log('[Networking] Mock connection successful. Client ID: ' + this.clientId, 'info');
             this.onConnect();
             return;
         }
@@ -55,9 +64,9 @@ class Networking {
         try {
             this.socket = new WebSocket(serverUrl);
             this.setupSocketEvents();
-            console.log(`[Networking] Connecting to ${serverUrl} (room: ${roomId})`);
+            this.log('[Networking] Connecting to ' + serverUrl + ' (room: ' + roomId + ')', 'info');
         } catch (error) {
-            console.error(`[Networking] Connection error: ${error.message}`);
+            this.logError('[Networking] Connection error: ' + error.message);
             this.scheduleReconnect();
         }
     }
@@ -70,12 +79,12 @@ class Networking {
             this.reconnectAttempts = 0;
             this.joinRoom(this.roomId);
             this.onConnect();
-            console.log('[Networking] WebSocket connection established');
+            this.log('[Networking] WebSocket connection established', 'info');
         };
         
         this.socket.onclose = (event) => {
             this.isConnected = false;
-            console.log(`[Networking] WebSocket connection closed: ${event.code} ${event.reason}`);
+            this.log('[Networking] WebSocket connection closed: ' + event.code + ' ' + event.reason, 'info');
             this.onDisconnect();
             
             // Attempt to reconnect if this wasn't a clean close
@@ -89,12 +98,12 @@ class Networking {
                 const message = JSON.parse(event.data);
                 this.handleMessage(message);
             } catch (error) {
-                console.error('[Networking] Error handling message:', error);
+                this.logError('[Networking] Error handling message: ' + error.message);
             }
         };
         
         this.socket.onerror = (error) => {
-            console.error('[Networking] WebSocket error:', error);
+            this.logError('[Networking] WebSocket error: ' + (error.message || 'Unknown error'));
         };
     }
     
@@ -107,7 +116,8 @@ class Networking {
         this.isReconnecting = true;
         this.reconnectAttempts++;
         
-        console.log(`[Networking] Reconnecting in ${this.reconnectDelay}ms (attempt ${this.reconnectAttempts}/${this.reconnectMaxAttempts})`);
+        this.log('[Networking] Reconnecting in ' + this.reconnectDelay + 'ms (attempt ' + 
+              this.reconnectAttempts + '/' + this.reconnectMaxAttempts + ')', 'info');
         
         setTimeout(() => {
             this.isReconnecting = false;
@@ -126,7 +136,7 @@ class Networking {
         if (!this.isConnected) return;
         
         if (this.isMockMode) {
-            console.log(`[Networking] Mock joining room: ${roomId}`);
+            this.log('[Networking] Mock joining room: ' + roomId, 'info');
             return;
         }
         
@@ -141,34 +151,36 @@ class Networking {
         switch (message.type) {
             case 'client_id':
                 this.clientId = message.clientId;
-                console.log(`[Networking] Received client ID: ${this.clientId}`);
+                this.log('[Networking] Received client ID: ' + this.clientId, 'info');
                 break;
                 
             case 'player_join':
                 this.players.set(message.playerId, message.playerData);
                 this.onPlayerJoin(message.playerId, message.playerData);
-                console.log(`[Networking] Player joined: ${message.playerId}`);
+                this.log('[Networking] Player joined: ' + message.playerId, 'info');
                 break;
                 
             case 'player_leave':
                 this.players.delete(message.playerId);
                 this.onPlayerLeave(message.playerId);
-                console.log(`[Networking] Player left: ${message.playerId}`);
+                this.log('[Networking] Player left: ' + message.playerId, 'info');
                 break;
                 
             case 'player_update':
+                // Update player state from the server
                 this.players.set(message.playerId, message.playerData);
                 this.onPlayerUpdate(message.playerId, message.playerData);
-                // Don't log every update to avoid console spam
                 break;
                 
             case 'game_state':
-                this.onGameStateUpdate(message.state);
-                console.log('[Networking] Game state updated');
+                // Update game state
+                this.onGameStateUpdate(message.gameState);
+                this.log('[Networking] Game state updated', 'debug');
                 break;
                 
             default:
-                console.warn('[Networking] Unknown message type:', message.type);
+                this.logWarn('[Networking] Unknown message type: ' + message.type);
+                break;
         }
     }
     
@@ -177,17 +189,17 @@ class Networking {
      * @param {Object} data - Data to send
      */
     send(data) {
+        if (!this.isConnected) return;
+        
         if (this.isMockMode) {
             this.handleMockSend(data);
             return;
         }
         
-        if (!this.isConnected || !this.socket) return;
-        
         try {
             this.socket.send(JSON.stringify(data));
         } catch (error) {
-            console.error('[Networking] Error sending data:', error);
+            this.logError('[Networking] Error sending data: ' + error.message);
         }
     }
     
@@ -230,24 +242,18 @@ class Networking {
     disconnect() {
         if (this.isMockMode) {
             this.isConnected = false;
-            this.players.clear();
-            this.mockPlayers.clear();
+            this.log('[Networking] Mock disconnect', 'info');
             this.onDisconnect();
-            console.log('[Networking] Mock disconnect');
             return;
         }
         
         if (this.socket) {
             try {
-                this.socket.close(1000, 'Client disconnected');
+                this.socket.close();
             } catch (error) {
-                console.error('[Networking] Error during disconnect:', error);
+                this.logError('[Networking] Error during disconnect: ' + error.message);
             }
-            this.socket = null;
         }
-        
-        this.isConnected = false;
-        this.players.clear();
     }
     
     /**

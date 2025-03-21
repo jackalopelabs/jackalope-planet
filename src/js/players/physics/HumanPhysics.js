@@ -42,6 +42,7 @@ class HumanPhysics extends BasePhysics {
      * Find objects marked as terrain colliders in the scene
      */
     findTerrainObjects() {
+        const log = window.jpLog || console.log;
         this.terrainObjects = [];
         
         this.scene.traverse((object) => {
@@ -51,7 +52,7 @@ class HumanPhysics extends BasePhysics {
             }
         });
         
-        console.log(`Found ${this.terrainObjects.length} terrain colliders for human physics`);
+        log('Found ' + this.terrainObjects.length + ' terrain colliders for human physics', 'debug');
     }
     
     /**

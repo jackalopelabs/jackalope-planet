@@ -4,8 +4,17 @@ import { BunnyPhysics } from './physics/BunnyPhysics';
 
 class Player {
     constructor(game, scene, options = {}) {
+        // Set up logging
+        const log = window.jpLog || console.log;
+        const logWarn = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'warning') : 
+            console.warn;
+        const logError = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'error') : 
+            console.error;
+            
         // Log options for debugging
-        console.log(`%c Player constructor called with options:`, 'color: #aaa;', options);
+        log('Player constructor called with options:', 'debug', options);
         
         this.game = game;
         this.scene = scene;
@@ -55,7 +64,7 @@ class Player {
         if (game && game.camera) {
             this.camera = game.camera;
         } else {
-            console.warn(`%c Player.constructor: No camera available from game (player: ${this.id})`, 'color: orange;');
+            logWarn('Player.constructor: No camera available from game (player: ' + this.id + ')');
             this.camera = null;
         }
         
@@ -74,12 +83,12 @@ class Player {
         this.controls = null;
         
         // Debug logs
-        console.log(`Player created: ${this.id} (team: ${this.team}, local: ${this.isLocal}, active: ${this.isActive})`);
+        log('Player created: ' + this.id + ' (team: ' + this.team + ', local: ' + this.isLocal + ', active: ' + this.isActive + ')', 'debug');
     }
     
     init() {
         // This should be implemented by child classes
-        console.warn('Player.init() should be implemented by child classes');
+        logWarn('Player.init() should be implemented by child classes');
     }
     
     /**
@@ -88,24 +97,28 @@ class Player {
      * @param {boolean} processInput - Whether to process input controls (only for local active player)
      */
     update(delta, processInput = true) {
+        // Get logging functions
+        const log = window.jpLog || console.log;
+        const logWarn = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'warning') : 
+            console.warn;
+        const logError = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'error') : 
+            console.error;
+            
         // CRITICAL DEBUG: Log the player state occasionally to avoid console spam
         const shouldLogUpdate = Math.random() < 0.01; // Log roughly 1% of updates
 
         if (shouldLogUpdate) {
-            // Color-coded console log to easily identify player updates
-            console.log(
-                `%c 👤 PLAYER UPDATE: ${this.id} (${this.team}) - isActive: ${this.isActive}, processInput: ${processInput}`, 
-                `background: ${this.isActive ? '#252' : '#522'}; color: ${this.isActive ? '#afa' : '#faa'}; padding: 3px;`
-            );
+            // Log player updates
+            log('👤 PLAYER UPDATE: ' + this.id + ' (' + this.team + ') - isActive: ' + this.isActive + ', processInput: ' + processInput, 'debug');
             
             // Check for mismatch between game's active player and this player's isActive state
             if (this.game.player === this && !this.isActive) {
-                console.log(`%c ⚠️ CRITICAL: Player state mismatch! This player (${this.id}) is game.player but isActive=false`, 
-                           'background: red; color: white; padding: 3px;');
+                logWarn('⚠️ CRITICAL: Player state mismatch! This player (' + this.id + ') is game.player but isActive=false');
             }
             else if (this.game.player !== this && this.isActive) {
-                console.log(`%c ⚠️ CRITICAL: Player state mismatch! This player (${this.id}) has isActive=true but is not game.player`, 
-                           'background: red; color: white; padding: 3px;');
+                logWarn('⚠️ CRITICAL: Player state mismatch! This player (' + this.id + ') has isActive=true but is not game.player');
             }
         }
 
@@ -113,10 +126,10 @@ class Player {
         if (this.isLocal && processInput) {
             // MORE DETAILED LOG: Show when input is being processed
             if (shouldLogUpdate) {
-                console.log(
-                    `%c 🎮 PROCESSING INPUT FOR: ${this.id} - Keyboard state: W:${this.game.inputManager.keys.w}, A:${this.game.inputManager.keys.a}, S:${this.game.inputManager.keys.s}, D:${this.game.inputManager.keys.d}`, 
-                    'background: #225; color: #aaf; padding: 2px;'
-                );
+                log('🎮 PROCESSING INPUT FOR: ' + this.id + ' - Keyboard state: W:' + this.game.inputManager.keys.w + 
+                    ', A:' + this.game.inputManager.keys.a + 
+                    ', S:' + this.game.inputManager.keys.s + 
+                    ', D:' + this.game.inputManager.keys.d, 'debug');
             }
             
             // Process player input if player is active
@@ -131,15 +144,15 @@ class Player {
                 const input = this.game?.inputManager?.getInputState() || {};
                 this.physics.apply(this, delta, input);
             } catch (error) {
-                console.error(`Physics error for player ${this.id}:`, error);
+                logError('Physics error for player ' + this.id + ': ' + error.message);
             }
         } else if (shouldLogUpdate) {
             // Log missing physics for debugging
-            console.log(`%c ⚠️ Physics missing or invalid for player ${this.id}`, 'color: orange;');
+            logWarn('⚠️ Physics missing or invalid for player ' + this.id);
             
             // If physics doesn't exist, try to reinitialize it if possible
             if (!this.physics && this.game && this.game.scene) {
-                console.log(`%c 🔄 Attempting to reinitialize physics for player ${this.id}`, 'color: #aaf;');
+                log('🔄 Attempting to reinitialize physics for player ' + this.id, 'debug');
                 if (typeof this.initPhysics === 'function') {
                     this.initPhysics();
                 }
@@ -158,7 +171,7 @@ class Player {
                 this.updateCameraPosition(delta);
             } else {
                 if (Math.random() < 0.01) {
-                    console.warn(`Player ${this.id} (${this.team}) has no updateCameraPosition method`);
+                    logWarn('Player ' + this.id + ' (' + this.team + ') has no updateCameraPosition method');
                 }
             }
         }
@@ -294,7 +307,7 @@ class Player {
         // Debug which player is receiving mouse down events
         const isActive = this === this.game.player;
         if (isActive && this.isLocal) {
-            console.log(`%c 🖱️ Mouse down event received by ${this.id} (${this.team})`, 
+            log('🖱️ Mouse down event received by ' + this.id + ' (' + this.team + ')', 
                       'background: #335; color: #afa; padding: 2px;');
         }
         
@@ -308,7 +321,7 @@ class Player {
         // Debug mouse move events occasionally
         const isActive = this === this.game.player;
         if (isActive && this.isLocal && Math.random() < 0.001) {
-            console.log(`%c 🖱️ Mouse move processed by ${this.id} (${this.team})`, 
+            log('🖱️ Mouse move processed by ' + this.id + ' (' + this.team + ')', 
                       'background: #335; color: #8cf; padding: 2px;');
         }
         
@@ -333,24 +346,24 @@ class Player {
     }
     
     onInstructionsDismissed() {
-        console.log('Instructions dismissed, initializing controls');
+        log('Instructions dismissed, initializing controls');
         
         // Initialize controls if not already done and this is a local player
         if (this.isLocal && this.controls && typeof this.controls.init === 'function') {
             try {
                 // Make sure we have a valid container
                 if (!this.game || !this.game.container) {
-                    console.error('Cannot initialize controls: game.container is null or undefined');
+                    logError('Cannot initialize controls: game.container is null or undefined');
                     return;
                 }
                 
                 this.controls.init(this.game.container);
-                console.log('Controls initialized successfully');
+                log('Controls initialized successfully');
             } catch (error) {
-                console.error('Error initializing player controls:', error);
+                logError('Error initializing player controls: ' + error.message);
             }
         } else {
-            console.warn('No controls to initialize or init method not available');
+            logWarn('No controls to initialize or init method not available');
         }
     }
     
@@ -384,7 +397,7 @@ class Player {
     }
     
     cleanup() {
-        console.log(`Cleaning up player ${this.id}`);
+        log('Cleaning up player ' + this.id);
         
         // Clean up components
         if (this.controls && typeof this.controls.cleanup === 'function') {
@@ -408,18 +421,18 @@ class Player {
     
     setControls(controlsComponent) {
         if (!controlsComponent) {
-            console.warn('Attempting to set null controls component');
+            logWarn('Attempting to set null controls component');
             return;
         }
         
         this.controls = controlsComponent;
-        console.log('Controls component set');
+        log('Controls component set');
         
         // Ensure controls has all required methods
         const requiredMethods = ['getInput', 'init', 'cleanup'];
         for (const method of requiredMethods) {
             if (typeof this.controls[method] !== 'function') {
-                console.warn(`Controls component missing required method: ${method}`);
+                logWarn('Controls component missing required method: ' + method);
             }
         }
     }
@@ -443,19 +456,19 @@ class Player {
     processInput(deltaTime) {
         // Skip processing if not active
         if (!this.isActive) {
-            console.log(`%c ℹ️ Skipping input processing - player ${this.id} is not active`, 'color: gray;');
+            log('ℹ️ Skipping input processing - player ' + this.id + ' is not active', 'color: gray;');
             return;
         }
         
         // Defensive check: ensure we have required components
         if (!this.controls) {
-            console.log(`%c ⚠️ Cannot process input for ${this.id} - missing controls component`, 'color: orange;');
+            log('⚠️ Cannot process input for ' + this.id + ' - missing controls component', 'color: orange;');
             return;
         }
         
         // Check for valid input manager
         if (!this.game || !this.game.inputManager) {
-            console.log(`%c ⚠️ Cannot process input for ${this.id} - missing input manager`, 'color: orange;');
+            log('⚠️ Cannot process input for ' + this.id + ' - missing input manager', 'color: orange;');
             return;
         }
         
@@ -467,7 +480,7 @@ class Player {
         const moveRight = !!inputManager.keys.d;
         
         // Debug log actual key state from input manager
-        console.log(`%c 🎮 Input for ${this.id}: W:${moveForward} A:${moveLeft} S:${moveBackward} D:${moveRight}`, 
+        log('🎮 Input for ' + this.id + ': W:' + moveForward + ' A:' + moveLeft + ' S:' + moveBackward + ' D:' + moveRight, 
                    'background: #225; color: #cfc; padding: 2px;');
         
         // Calculate movement vector
@@ -481,7 +494,7 @@ class Player {
         // Debug log movement vector
         const hasMovement = movementVector.lengthSq() > 0;
         if (hasMovement) {
-            console.log(`%c 🚶 Movement vector for ${this.id}: (${movementVector.x.toFixed(1)}, ${movementVector.z.toFixed(1)})`, 
+            log('🚶 Movement vector for ' + this.id + ': (' + movementVector.x.toFixed(1) + ', ' + movementVector.z.toFixed(1) + ')', 
                        'color: #3f3;');
         }
         
@@ -493,9 +506,9 @@ class Player {
             if (this.movement && typeof this.movement.move === 'function') {
                 // Apply movement with the appropriate speed
                 this.movement.move(movementVector, deltaTime);
-                console.log(`%c ✅ Applied movement to ${this.id}`, 'color: #3f3;');
+                log('✅ Applied movement to ' + this.id, 'color: #3f3;');
             } else {
-                console.log(`%c ⚠️ Cannot move player ${this.id} - missing movement component`, 'color: orange;');
+                log('⚠️ Cannot move player ' + this.id + ' - missing movement component', 'color: orange;');
                 
                 // Attempt fallback movement - direct model position update
                 if (this.model && moveForward) {
@@ -509,7 +522,7 @@ class Player {
                     // Apply movement directly
                     this.model.position.add(direction);
                     this.position.copy(this.model.position);
-                    console.log(`%c 🚨 Used emergency fallback movement for ${this.id}`, 'color: orange;');
+                    log('🚨 Used emergency fallback movement for ' + this.id, 'color: orange;');
                 }
             }
         }
@@ -522,77 +535,39 @@ class Player {
      * Should be overridden by subclasses but this provides basic recovery
      */
     initPhysics() {
-        console.log(`%c 🔄 Attempting to initialize physics for player ${this.id} (${this.team})`, 'color: #aaf;');
-        
-        // Get the correct physics class based on player team
-        let PhysicsClass = null;
-        try {
-            if (this.team === 'human') {
-                // Try to dynamically import the HumanPhysics class
-                if (typeof HumanPhysics !== 'undefined') {
-                    PhysicsClass = HumanPhysics;
-                } else {
-                    console.warn(`Could not find HumanPhysics class for player ${this.id}`);
-                }
-            } else if (this.team === 'bunny') {
-                // Try to dynamically import the BunnyPhysics class
-                if (typeof BunnyPhysics !== 'undefined') {
-                    PhysicsClass = BunnyPhysics;
-                } else {
-                    console.warn(`Could not find BunnyPhysics class for player ${this.id}`);
-                }
-            } else if (this.team === 'merc') {
-                // Use HumanPhysics for mercenary players
-                if (typeof HumanPhysics !== 'undefined') {
-                    PhysicsClass = HumanPhysics;
-                } else {
-                    console.warn(`Could not find HumanPhysics class for merc player ${this.id}`);
-                }
-            }
+        const log = window.jpLog || console.log;
+        const logWarn = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'warning') : 
+            console.warn;
             
-            // If we found a suitable physics class, create and set it
-            if (PhysicsClass) {
-                const physics = new PhysicsClass(this._originalOptions.physics || {});
-                this.setPhysics(physics);
-                
-                // Set the scene reference if available
-                if (this.game && this.game.scene && typeof physics.setScene === 'function') {
-                    physics.setScene(this.game.scene);
+        // Create physics component based on player type
+        let physics = null;
+        
+        if (this.team === 'bunny') {
+            log('Creating BunnyPhysics for player: ' + this.id, 'debug');
+            physics = new BunnyPhysics();
+        } else {
+            log('Creating HumanPhysics for player: ' + this.id, 'debug');
+            physics = new HumanPhysics();
+        }
+        
+        // Set physics component
+        if (physics) {
+            this.setPhysics(physics);
+            
+            // Set scene for terrain collision if available
+            if (this.game && this.game.scene) {
+                if (typeof this.physics.setScene === 'function') {
+                    this.physics.setScene(this.game.scene);
+                } else {
+                    logWarn('Physics component has no setScene method (player ' + this.id + ')');
                 }
-                
-                console.log(`%c ✅ Successfully initialized physics for player ${this.id}`, 'color: #5f5;');
-                return true;
             } else {
-                console.error(`%c ❌ Could not initialize physics for player ${this.id} - no suitable physics class found`, 'color: #f55;');
-                return false;
+                logWarn('Cannot set scene for physics - scene reference is missing (player ' + this.id + ')');
             }
-        } catch (error) {
-            console.error(`%c ❌ Error initializing physics for player ${this.id}:`, 'color: #f55;', error);
-            return false;
         }
     }
     
-    /**
-     * Set the physics component for this player
-     * @param {Object} physics - The physics component
-     */
-    setPhysics(physics) {
-        // Store the physics component
-        this.physics = physics;
-        
-        // Set initial position if physics has a position property
-        if (this.physics && this.physics.position) {
-            this.physics.position.copy(this.position);
-        }
-        
-        // If the physics has a setScene method and the game scene exists, set it
-        if (this.physics && typeof this.physics.setScene === 'function' && this.game && this.game.scene) {
-            this.physics.setScene(this.game.scene);
-        }
-        
-        console.log(`Physics component set for player ${this.id}`);
-    }
-
     /**
      * Base implementation of updateCameraPosition for the Player class
      * This is overridden by child classes (BunnyPlayer, HumanPlayer) for specific camera behaviors
@@ -607,7 +582,7 @@ class Player {
             this.camera.lookAt(this.model.position);
         } else if (Math.random() < 0.01) {
             // Occasional warning for debugging
-            console.warn(`Cannot update camera position for ${this.id} - Missing model or camera`);
+            logWarn('Cannot update camera position for ' + this.id + ' - Missing model or camera');
         }
     }
 }

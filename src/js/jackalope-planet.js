@@ -1,10 +1,68 @@
 import { Game } from './core/Game';
 import '../css/jackalope-planet.css';
 
+// GLOBAL DEBUG FLAG - Set to false to reduce console logs
+const DEBUG_MODE = false;
+const DEBUG_WARNINGS = true; // Always show warnings and errors
+const DEBUG_MULTIPLAYER = false; // Keep multiplayer, God Mode and character control logs
+
 const JACKALOPE_VERSION = 'multiplayer-v1-MASON';
+
+// Only show important logs regardless of debug mode
 console.log(`%c 🎮 JACKALOPE PLANET: ${JACKALOPE_VERSION} LOADED 🎮`, 'background: #222; color: #bada55; font-size: 16px; padding: 10px;');
-console.log('%c 🚀 MULTIPLAYER EDITION ACTIVE - CONTROLS:', 'color: #ff6700; font-size: 14px;');
-console.log('%c ⌨️  G: Toggle God Mode | 1: Spawn Jackalope | 2: Spawn Merc | T: Switch Players', 'color: #00a2ff; font-size: 12px;');
+
+// Enhanced helper function to control logging
+window.jpLog = function(message, type = 'debug', data = null) {
+    // Skip logs based on debug settings
+    if (!DEBUG_MODE && type === 'debug') return;
+    if (!DEBUG_WARNINGS && type === 'warning') return;
+    if (!DEBUG_MULTIPLAYER && (type === 'multiplayer' || type === 'network')) return;
+    
+    // Get current timestamp for logs
+    const timestamp = new Date().toISOString().split('T')[1].slice(0, 8);
+    
+    // Format the message with timestamp
+    const formattedMessage = `[${timestamp}] ${message}`;
+    
+    // Always log errors
+    if (type === 'error') {
+        console.error(formattedMessage);
+        if (data) console.error(data);
+        return;
+    }
+    
+    // Format based on type
+    switch(type) {
+        case 'multiplayer':
+            console.log(`%c ${formattedMessage}`, 'color: #00a2ff;');
+            break;
+        case 'network':
+            console.log(`%c ${formattedMessage}`, 'color: #8855ff;');
+            break;
+        case 'warning':
+            console.warn(formattedMessage);
+            break;
+        case 'physics':
+            console.log(`%c ${formattedMessage}`, 'color: #22cc44;');
+            break;
+        case 'player':
+            console.log(`%c ${formattedMessage}`, 'color: #ffcc22;');
+            break;
+        case 'weapon':
+            console.log(`%c ${formattedMessage}`, 'color: #ff5500;');
+            break;
+        case 'info':
+            console.log(`%c ${formattedMessage}`, 'color: #44aaff;');
+            break;
+        default: // debug logs
+            console.log(formattedMessage);
+    }
+    
+    // Log additional data if provided
+    if (data && DEBUG_MODE) {
+        console.log(data);
+    }
+};
 
 // Test helper - accessible via browser console
 window.testJackalope = {
@@ -121,18 +179,19 @@ window.testJackalope = {
 
 // Initialize Jackalope Planet when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('MULTIPLAYER: Jackalope Planet initializing');
+    const log = window.jpLog || console.log;
+    log('Jackalope Planet initializing', 'multiplayer');
     
     // Find all jackalope planet containers
     const containers = document.querySelectorAll('.jackalope-planet-canvas-container');
-    console.log(`Found ${containers.length} jackalope-planet containers`);
+    log(`Found ${containers.length} jackalope-planet containers`, 'debug');
     
     // Initialize each container with a new Game instance
     const games = [];
     containers.forEach(container => {
         const containerId = container.getAttribute('id');
         if (containerId) {
-            console.log(`Initializing game in container: ${containerId}`);
+            log(`Initializing game in container: ${containerId}`, 'debug');
             const game = new Game(containerId);
             games.push(game);
             
@@ -162,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Add player info overlay
             game.addPlayerInfoOverlay();
         } else {
-            console.error('Container without ID found, skipping');
+            log('Container without ID found, skipping', 'warning');
         }
     });
     
@@ -198,8 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Global key handler for view toggle (T key)
     window.addEventListener('keydown', (event) => {
         if ((event.key === 't' || event.key === 'T') && !isProcessingKeyPress) {
-            console.log('Global T key pressed, switching player mode');
-            
             // Set the flag to prevent multiple rapid keypresses
             isProcessingKeyPress = true;
             
@@ -213,8 +270,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 games.forEach(game => {
                     if (typeof game.switchPlayerMode === 'function') {
                         const newMode = game.switchPlayerMode();
-                        console.log(`Game switched to ${newMode} mode`);
-                        
                         // Update current tracked mode if this is the active game
                         currentMode = game.gameMode;
                     }
@@ -288,8 +343,10 @@ document.addEventListener('DOMContentLoaded', () => {
  * @param {Game} game - Game instance
  */
 function initializeNetworking(game) {
+    const log = window.jpLog || console.log;
+    
     if (!game || !game.networking) {
-        console.error('Cannot initialize networking: game or networking component not available');
+        log('Cannot initialize networking: game or networking component not available', 'error');
         return;
     }
     
@@ -300,21 +357,21 @@ function initializeNetworking(game) {
     // Set up callbacks for network events
     const callbacks = {
         onConnect: () => {
-            console.log('Connected to game server');
+            log('Connected to game server', 'multiplayer');
             game.isMultiplayerEnabled = true;
         },
         
         onDisconnect: () => {
-            console.log('Disconnected from game server');
+            log('Disconnected from game server', 'multiplayer');
             game.isMultiplayerEnabled = false;
         },
         
         onPlayerJoin: (playerId, playerData) => {
-            console.log(`Player ${playerId} joined (team: ${playerData.team})`);
+            log(`Player ${playerId} joined (team: ${playerData.team})`, 'multiplayer');
             
             // Check if player already exists
             if (game.getPlayerById(playerId)) {
-                console.log(`Player ${playerId} already exists, skipping creation`);
+                log(`Player ${playerId} already exists, skipping creation`, 'multiplayer');
                 return;
             }
             
@@ -331,7 +388,7 @@ function initializeNetworking(game) {
         },
         
         onPlayerLeave: (playerId) => {
-            console.log(`Player ${playerId} left`);
+            log(`Player ${playerId} left`, 'multiplayer');
             
             // Remove the player if they exist
             game.removePlayer(playerId);
@@ -355,5 +412,5 @@ function initializeNetworking(game) {
     game.networking.connect(serverUrl, roomId, callbacks);
     
     // In real implementation, we'd set up WebSocket server connection here
-    console.log('Networking initialized in mock mode');
+    log('Networking initialized in mock mode', 'multiplayer');
 } 

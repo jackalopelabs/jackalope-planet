@@ -6,60 +6,76 @@ import { getAssetPath, checkAssetExists, getModelPath } from '../../utils/AssetL
 // Add a global debugging helper
 let flamethrowerInstance = null;
 
+// Helper function for logging
+const jpLog = (message, level = 'debug', data = null) => {
+    if (window.jpLog) {
+        window.jpLog(message, level, data);
+    } else {
+        // Fallback to console methods if jpLog isn't available
+        if (level === 'error') {
+            console.error(message, data);
+        } else if (level === 'warning') {
+            console.warn(message, data);
+        } else {
+            console.log(message, data);
+        }
+    }
+};
+
 window.debugFlamethrower = function() {
     if (!flamethrowerInstance) {
-        console.log('[DEBUG] No flamethrower instance found yet');
+        jpLog('No flamethrower instance found yet', 'warning');
         return;
     }
 
     const ft = flamethrowerInstance;
-    console.log('-------- FLAMETHROWER DEBUG --------');
-    console.log('Is initialized:', ft ? 'yes' : 'no');
-    console.log('Is firing:', ft.isFiring);
-    console.log('Has particle system:', ft.particleSystem ? 'yes' : 'no');
-    console.log('Particle count:', ft.particles.length);
-    console.log('Active particles:', ft.particles.filter(p => p.life > 0).length);
-    console.log('Scene:', ft.scene ? 'valid' : 'null');
+    jpLog('-------- FLAMETHROWER DEBUG --------', 'debug');
+    jpLog('Is initialized: ' + (ft ? 'yes' : 'no'), 'debug');
+    jpLog('Is firing: ' + ft.isFiring, 'debug');
+    jpLog('Has particle system: ' + (ft.particleSystem ? 'yes' : 'no'), 'debug');
+    jpLog('Particle count: ' + ft.particles.length, 'debug');
+    jpLog('Active particles: ' + ft.particles.filter(p => p.life > 0).length, 'debug');
+    jpLog('Scene: ' + (ft.scene ? 'valid' : 'null'), 'debug');
     
     if (ft.particleSystem) {
-        console.log('Particle system parent:', ft.particleSystem.parent ? ft.particleSystem.parent.type : 'none');
-        console.log('Particle system visible:', ft.particleSystem.visible);
-        console.log('Particle system frustumCulled:', ft.particleSystem.frustumCulled);
+        jpLog('Particle system parent: ' + (ft.particleSystem.parent ? ft.particleSystem.parent.type : 'none'), 'debug');
+        jpLog('Particle system visible: ' + ft.particleSystem.visible, 'debug');
+        jpLog('Particle system frustumCulled: ' + ft.particleSystem.frustumCulled, 'debug');
     }
     
     // Add lighting debug info
     if (ft.flameLight) {
-        console.log('------ FLAME LIGHT DEBUG ------');
-        console.log('Flame light intensity:', ft.flameLight.intensity);
-        console.log('Flame light distance:', ft.flameLight.distance);
-        console.log('Flame light position:', 
-                   ft.flameLight.position.x.toFixed(2),
-                   ft.flameLight.position.y.toFixed(2),
-                   ft.flameLight.position.z.toFixed(2));
-        console.log('Flame light casts shadow:', ft.flameLight.castShadow);
-        console.log('Flame light visible:', ft.flameLight.visible);
-        console.log('Flame light parent:', ft.flameLight.parent ? ft.flameLight.parent.type : 'none');
+        jpLog('------ FLAME LIGHT DEBUG ------', 'debug');
+        jpLog('Flame light intensity: ' + ft.flameLight.intensity, 'debug');
+        jpLog('Flame light distance: ' + ft.flameLight.distance, 'debug');
+        jpLog('Flame light position: ' + 
+              ft.flameLight.position.x.toFixed(2) + ', ' +
+              ft.flameLight.position.y.toFixed(2) + ', ' +
+              ft.flameLight.position.z.toFixed(2), 'debug');
+        jpLog('Flame light casts shadow: ' + ft.flameLight.castShadow, 'debug');
+        jpLog('Flame light visible: ' + ft.flameLight.visible, 'debug');
+        jpLog('Flame light parent: ' + (ft.flameLight.parent ? ft.flameLight.parent.type : 'none'), 'debug');
     } else {
-        console.log('Flame light: NOT CREATED');
+        jpLog('Flame light: NOT CREATED', 'debug');
     }
     
     if (ft.ambientGlowLight) {
-        console.log('------ AMBIENT GLOW LIGHT DEBUG ------');
-        console.log('Ambient glow light intensity:', ft.ambientGlowLight.intensity);
-        console.log('Ambient glow light distance:', ft.ambientGlowLight.distance);
-        console.log('Ambient glow light position:', 
-                   ft.ambientGlowLight.position.x.toFixed(2),
-                   ft.ambientGlowLight.position.y.toFixed(2),
-                   ft.ambientGlowLight.position.z.toFixed(2));
-        console.log('Ambient glow light visible:', ft.ambientGlowLight.visible);
+        jpLog('------ AMBIENT GLOW LIGHT DEBUG ------', 'debug');
+        jpLog('Ambient glow light intensity: ' + ft.ambientGlowLight.intensity, 'debug');
+        jpLog('Ambient glow light distance: ' + ft.ambientGlowLight.distance, 'debug');
+        jpLog('Ambient glow light position: ' + 
+              ft.ambientGlowLight.position.x.toFixed(2) + ', ' +
+              ft.ambientGlowLight.position.y.toFixed(2) + ', ' +
+              ft.ambientGlowLight.position.z.toFixed(2), 'debug');
+        jpLog('Ambient glow light visible: ' + ft.ambientGlowLight.visible, 'debug');
     } else {
-        console.log('Ambient glow light: NOT CREATED');
+        jpLog('Ambient glow light: NOT CREATED', 'debug');
     }
     
     // Debug helpers
-    console.log('------ DEBUG VISUALIZERS ------');
-    console.log('Light debug sphere:', ft.lightDebugSphere ? 'created' : 'none');
-    console.log('Glow debug sphere:', ft.glowDebugSphere ? 'created' : 'none');
+    jpLog('------ DEBUG VISUALIZERS ------', 'debug');
+    jpLog('Light debug sphere: ' + (ft.lightDebugSphere ? 'created' : 'none'), 'debug');
+    jpLog('Glow debug sphere: ' + (ft.glowDebugSphere ? 'created' : 'none'), 'debug');
     
     return 'Debug info printed';
 };
@@ -67,7 +83,7 @@ window.debugFlamethrower = function() {
 // Add a function to analyze scene materials
 window.analyzeSceneMaterials = function() {
     if (!flamethrowerInstance || !flamethrowerInstance.scene) {
-        console.log('[DEBUG] No flamethrower instance or scene found');
+        jpLog('No flamethrower instance or scene found', 'warning');
         return;
     }
     
@@ -124,11 +140,11 @@ class Flamethrower extends HumanWeapon {
         
         // Ensure player and scene are valid
         if (!player) {
-            console.error('[DEBUG] Player is null in Flamethrower constructor');
+            jpLog('Player is null in Flamethrower constructor', 'error');
         }
         
         if (!player.scene) {
-            console.error('[DEBUG] Scene is null in Flamethrower constructor');
+            jpLog('Scene is null in Flamethrower constructor', 'error');
         }
         
         // Initialize effects array
@@ -158,7 +174,7 @@ class Flamethrower extends HumanWeapon {
         this.useDynamicLighting = true; // Toggle for dynamic lighting feature
         
         // Debug mode
-        this.debug = true;
+        this.debug = false; // Set to false to reduce console spam
         
         // Flag for automatic recreation of particle system if needed
         this.recreationAttempted = false;
@@ -182,75 +198,71 @@ class Flamethrower extends HumanWeapon {
     }
     
     init(options) {
-        console.log('[DEBUG] Flamethrower init starting');
+        jpLog('Flamethrower init starting', 'debug');
         
-        // Verify the scene is available
+        // Initialize weapon components
+        this.scene = options.scene || this.player.scene;
+        
         if (!this.scene) {
-            console.error('[DEBUG] Scene is null in Flamethrower init');
+            jpLog('Scene is null in Flamethrower init', 'error');
             if (this.player && this.player.scene) {
-                console.log('[DEBUG] Using player.scene as fallback');
+                jpLog('Using player.scene as fallback', 'debug');
                 this.scene = this.player.scene;
             } else if (this.player && this.player.game && this.player.game.scene) {
-                console.log('[DEBUG] Using player.game.scene as fallback');
+                jpLog('Using player.game.scene as fallback', 'debug');
                 this.scene = this.player.game.scene;
             } else {
-                console.error('[DEBUG] No scene available, dynamic lighting disabled');
+                jpLog('No scene available, dynamic lighting disabled', 'error');
                 this.useDynamicLighting = false;
             }
         } else {
-            console.log('[DEBUG] Scene is valid in Flamethrower init');
+            jpLog('Scene is valid in Flamethrower init', 'debug');
         }
         
-        // Create weapon model
+        // Create the weapon model (3D object)
         this.createWeaponModel();
         
-        // Option to try alternative particle system implementation
-        const useAlternativeParticles = true;
-        this.useCustomShaders = useAlternativeParticles;
-        
         // Create particle system for flames
-        if (useAlternativeParticles) {
-            console.log('[DEBUG] Using alternative particle system implementation');
+        if (options.useAlternativeParticleSystem) {
+            jpLog('Using alternative particle system implementation', 'debug');
             this.createParticleSystem2();
         } else {
-            console.log('[DEBUG] Using standard particle system implementation');
+            jpLog('Using standard particle system implementation', 'debug');
             this.createParticleSystem();
         }
         
-        // Log debug info about lighting setup
-        console.log('[DEBUG] Lighting setup stats:');
-        console.log('[DEBUG] - useDynamicLighting:', this.useDynamicLighting);
-        console.log('[DEBUG] - scene available:', this.scene ? 'yes' : 'no');
+        // Output debug status
+        jpLog('Lighting setup stats:', 'debug');
+        jpLog('- useDynamicLighting: ' + this.useDynamicLighting, 'debug');
+        jpLog('- scene available: ' + (this.scene ? 'yes' : 'no'), 'debug');
         
-        // Prepare scene objects to receive lighting
-        if (this.scene && this.useDynamicLighting) {
-            this.enhanceSceneObjects();
-        }
-        
-        // Create dynamic light for the flame
-        if (this.useDynamicLighting) {
-            console.log('[DEBUG] Creating flame lights now');
+        // Create dynamic lights if enabled
+        // Only add lighting if we have a valid scene and dynamic lighting is enabled
+        if (this.useDynamicLighting && this.scene) {
+            jpLog('Creating flame lights now', 'debug');
             this.createFlameLight();
-            console.log('[DEBUG] After createFlameLight - flameLight created:', this.flameLight ? 'yes' : 'no', 
-                        'ambientGlowLight created:', this.ambientGlowLight ? 'yes' : 'no');
+            jpLog('After createFlameLight - flameLight created: ' + (this.flameLight ? 'yes' : 'no') + 
+                 ', added to scene: ' + (this.flameLight && this.flameLight.parent ? 'yes' : 'no'), 'debug');
         } else {
-            console.log('[DEBUG] Dynamic lighting is disabled, skipping light creation');
+            jpLog('Dynamic lighting is disabled, skipping light creation', 'debug');
         }
         
-        // Create debug helpers if enabled
-        // Disable debug helpers for cleaner appearance
-        this.debug = false; // Set debug to false to avoid creating visual helpers
-        if (this.debug) {
+        // Create debug helpers if debugging is enabled
+        if (options.debug) {
             this.createDebugHelpers();
         }
         
-        // Make sure particles array exists before accessing .length
+        // Create particles array if it doesn't exist
         if (!this.particles) {
-            console.error('[DEBUG] Particles array is undefined, initializing empty array');
+            jpLog('Particles array is undefined, initializing empty array', 'error');
             this.particles = [];
         }
         
-        console.log(`[DEBUG] Flamethrower initialized - particle system: ${this.particleSystem ? 'created' : 'failed'}, particles: ${this.particles.length}`);
+        // Call parent init
+        super.init(options);
+        
+        jpLog('Flamethrower initialized - particle system: ' + (this.particleSystem ? 'created' : 'failed') + 
+              ', particles: ' + this.particles.length, 'debug');
     }
     
     createWeaponModel() {

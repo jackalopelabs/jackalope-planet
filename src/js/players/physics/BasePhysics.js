@@ -13,7 +13,11 @@ class BasePhysics {
      */
     apply(player, delta) {
         // Base implementation - override in subclasses
-        console.warn('BasePhysics.apply() should be implemented by subclasses');
+        const logWarn = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'warning') : 
+            console.warn;
+            
+        logWarn('BasePhysics.apply() should be implemented by subclasses');
     }
 
     /**

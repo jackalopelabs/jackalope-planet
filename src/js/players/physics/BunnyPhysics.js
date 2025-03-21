@@ -22,6 +22,9 @@ class BunnyPhysics extends BasePhysics {
         this.downDirection = new THREE.Vector3(0, -1, 0);
         this.terrainObjects = [];
         this.scene = null;
+        
+        // For reducing log frequency
+        this._logCounter = 0;
     }
     
     /**
@@ -50,7 +53,12 @@ class BunnyPhysics extends BasePhysics {
             }
         });
         
-        console.log(`Found ${this.terrainObjects.length} terrain colliders for bunny physics`);
+        // Only log in debug mode
+        const DEBUG = window.DEBUG_MODE === true;
+        if (DEBUG) {
+            const log = window.jpLog || console.log;
+            log(`Found ${this.terrainObjects.length} terrain colliders for bunny physics`, 'debug');
+        }
     }
     
     /**
@@ -88,29 +96,24 @@ class BunnyPhysics extends BasePhysics {
      * @param {Object} input - Input state from InputManager
      */
     apply(player, delta, input = {}) {
-        // DEBUG: Add more detailed logging for physics updates
-        const debugPhysics = Math.random() < 0.01; // Log occasionally
-        
-        if (debugPhysics) {
-            console.log(`%c 🪂 BunnyPhysics.apply for player ${player.id}:`, 'color: #afa;', {
-                input: input,
-                hasVelocity: !!player.velocity,
-                playerPos: player.position?.clone(),
-                modelPos: player.model?.position?.clone(),
-                isGrounded: player.isGrounded
-            });
-        }
+        const DEBUG = window.DEBUG_MODE === true;
+        const log = window.jpLog || console.log;
         
         // Initialize velocity if it doesn't exist
         if (!player.velocity) {
             player.velocity = new THREE.Vector3(0, 0, 0);
             player.isGrounded = true;
-            console.log(`%c 🪂 Created velocity for player ${player.id}`, 'color: #afa;');
+            
+            // Only log velocity creation in debug mode and very rarely
+            if (DEBUG && Math.random() < 0.05) {
+                log(`🪂 Created velocity for player ${player.id}`, 'debug');
+            }
         }
         
         // CRITICAL: Verify player and model exist before proceeding
         if (!player || !player.model) {
-            console.warn(`%c 🪂 Cannot apply physics - player model missing for ${player?.id || 'unknown'}`, 'color: orange;');
+            // This is important, always log this error
+            log(`Cannot apply physics - player model missing for ${player?.id || 'unknown'}`, 'warning');
             return;
         }
         
@@ -126,10 +129,6 @@ class BunnyPhysics extends BasePhysics {
             player.position.copy(player.model.position);
             player.isGrounded = true;
             player.velocity.y = 0;
-            
-            if (debugPhysics) {
-                console.log(`%c 🪂 Grounded player at height ${minHeight.toFixed(2)}`, 'color: #afa;');
-            }
         }
         
         // Handle jumping when jump action is triggered and player is grounded
@@ -138,7 +137,6 @@ class BunnyPhysics extends BasePhysics {
         if (shouldJump && player.isGrounded) {
             player.velocity.y = 4.0; // Lower jump height (was 5.0)
             player.isGrounded = false;
-            console.log(`%c 🪂 Bunny hop! Player ${player.id}`, 'color: #ff9;');
         }
         
         // Apply gravity with floatiness factor (bunnies fall slower)
@@ -146,8 +144,9 @@ class BunnyPhysics extends BasePhysics {
             const adjustedGravity = this.gravity * this.floatiness;
             player.velocity.y -= adjustedGravity * delta;
             
-            if (debugPhysics) {
-                console.log(`%c 🪂 Applied gravity: ${adjustedGravity.toFixed(2)}, new Y velocity: ${player.velocity.y.toFixed(2)}`, 'color: #afa;');
+            // Log gravity application extremely rarely (1% chance) and only in debug mode
+            if (DEBUG && Math.random() < 0.01) {
+                log(`🪂 Applied gravity: ${(adjustedGravity * delta).toFixed(2)}, new Y velocity: ${player.velocity.y.toFixed(2)}`, 'debug');
             }
         }
         
@@ -172,15 +171,20 @@ class BunnyPhysics extends BasePhysics {
         // XZ movement is handled by the movement component
         const verticalMovement = new THREE.Vector3(0, player.velocity.y * delta, 0);
         
-        if (debugPhysics) {
-            console.log(`%c 🪂 Moving player by: ${verticalMovement.y.toFixed(4)} units`, 'color: #afa;');
-        }
+        // Calculate movement distance for logging
+        const movementMagnitude = verticalMovement.length();
         
         // CRITICAL: Ensure movePlayer method exists before calling it
         if (typeof player.movePlayer === 'function') {
             player.movePlayer(verticalMovement);
+            
+            // Log movement extremely rarely (0.5% chance) and only if significant movement and in debug mode
+            if (DEBUG && Math.random() < 0.005 && movementMagnitude > 0.001) {
+                log(`🪂 Moving player by: ${movementMagnitude.toFixed(4)} units`, 'debug');
+            }
         } else {
-            console.warn(`%c 🪂 Cannot move player - movePlayer method missing for ${player.id}`, 'color: orange;');
+            // This is a critical error, always log
+            log(`Cannot move player - movePlayer method missing for ${player.id}`, 'warning');
             // Apply movement directly
             if (player.model && player.model.position) {
                 player.model.position.add(verticalMovement);

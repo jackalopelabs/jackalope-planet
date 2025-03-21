@@ -14,10 +14,16 @@ class BunnyPlayer extends Player {
             isActive: true // Force isActive to true
         };
         
+        // Set up logging
+        const log = window.jpLog || console.log;
+        const logError = window.jpLog ? 
+            (msg) => window.jpLog(msg, 'error') : 
+            console.error;
+            
         // Get scene reference from game
         const scene = game ? game.scene : null;
         if (!scene && game) {
-            console.warn(`%c BunnyPlayer (constructor): Scene reference not available from game. Player ID: ${options.id || 'unknown'}`, 'color: orange;');
+            log('BunnyPlayer (constructor): Scene reference not available from game. Player ID: ' + (options.id || 'unknown'), 'warning');
         }
         
         // Pass scene as second parameter to match updated Player constructor
@@ -35,7 +41,7 @@ class BunnyPlayer extends Player {
         if (game && game.camera) {
             this.camera = game.camera;
         } else {
-            console.warn(`%c BunnyPlayer constructor: No camera available from game (player: ${this.id})`, 'color: orange;');
+            log('BunnyPlayer constructor: No camera available from game (player: ' + this.id + ')', 'warning');
         }
         
         // CRITICAL FIX: Initialize physics with explicit error handling
@@ -45,21 +51,21 @@ class BunnyPlayer extends Player {
             
             // Verify physics was set correctly and log result
             if (this.physics) {
-                console.log(`%c BunnyPlayer: Physics initialized successfully (id: ${this.id})`, 'color: #5f5;');
+                log('BunnyPlayer: Physics initialized successfully (id: ' + this.id + ')', 'debug');
                 
                 // Explicitly set scene reference
                 if (this.game && this.game.scene && typeof this.physics.setScene === 'function') {
                     this.physics.setScene(this.game.scene);
-                    console.log(`%c BunnyPlayer: Physics scene reference set (id: ${this.id})`, 'color: #5f5;');
+                    log('BunnyPlayer: Physics scene reference set (id: ' + this.id + ')', 'debug');
                 }
             } else {
-                console.error(`%c BunnyPlayer: Failed to set physics component (id: ${this.id})`, 'color: red;');
+                logError('BunnyPlayer: Failed to set physics component (id: ' + this.id + ')');
             }
         } catch (error) {
-            console.error(`%c BunnyPlayer: Error initializing physics: ${error.message} (id: ${this.id})`, 'color: red;');
+            logError('BunnyPlayer: Error initializing physics: ' + error.message + ' (id: ' + this.id + ')');
             // Attempt recovery
             if (typeof this.initPhysics === 'function') {
-                console.log(`%c BunnyPlayer: Attempting physics recovery (id: ${this.id})`, 'color: #aaf;');
+                log('BunnyPlayer: Attempting physics recovery (id: ' + this.id + ')', 'debug');
                 this.initPhysics();
             }
         }
@@ -72,11 +78,11 @@ class BunnyPlayer extends Player {
         if (this.controls && typeof this.controls.setCameraZoomCallback === 'function') {
             this.controls.setCameraZoomCallback(this.adjustCameraDistance.bind(this));
         } else {
-            console.warn('BunnyPlayer: controls.setCameraZoomCallback is not available');
+            log('BunnyPlayer: controls.setCameraZoomCallback is not available', 'warning');
         }
         
         // CRITICAL FIX: Log the important state flags after initialization
-        console.log(`%c BunnyPlayer: Created with state - isLocal: ${this.isLocal}, isActive: ${this.isActive} (id: ${this.id})`, 'background: #252; color: #afa;');
+        log('BunnyPlayer: Created with state - isLocal: ' + this.isLocal + ', isActive: ' + this.isActive + ' (id: ' + this.id + ')', 'debug');
         
         // Initialize player
         this.init();
@@ -114,9 +120,9 @@ class BunnyPlayer extends Player {
         // CRITICAL FIX: Use the game.scene reference with safety checks
         if (this.game && this.game.scene) {
             this.game.scene.add(this.model);
-            console.log(`BunnyPlayer: Model added to scene successfully (id: ${this.id})`);
+            log('BunnyPlayer: Model added to scene successfully (id: ' + this.id + ')');
         } else {
-            console.error(`BunnyPlayer: Cannot add model to scene - scene reference is missing! (id: ${this.id})`);
+            logError('BunnyPlayer: Cannot add model to scene - scene reference is missing! (id: ' + this.id + ')');
         }
         
         this.position.copy(this.model.position);
@@ -152,7 +158,7 @@ class BunnyPlayer extends Player {
         // CRITICAL FIX: Add defensive checks for model and camera
         if (!this.model) {
             if (Math.random() < 0.01) { // Log occasionally to prevent spam
-                console.log(`%c BunnyPlayer: Cannot update camera position - model is null (player: ${this.id})`, 'color: orange;');
+                log('BunnyPlayer: Cannot update camera position - model is null (player: ' + this.id + ')', 'warning');
             }
             return;
         }
@@ -160,13 +166,13 @@ class BunnyPlayer extends Player {
         // CRITICAL FIX: Check if camera exists
         if (!this.camera) {
             if (Math.random() < 0.01) { // Log occasionally to prevent spam
-                console.log(`%c BunnyPlayer: Cannot update camera position - camera is null (player: ${this.id})`, 'color: orange;');
+                log('BunnyPlayer: Cannot update camera position - camera is null (player: ' + this.id + ')', 'warning');
             }
             
             // Try to use game camera if available
             if (this.game && this.game.camera) {
                 this.camera = this.game.camera;
-                console.log(`%c BunnyPlayer: Using game camera as fallback (player: ${this.id})`, 'color: #afa;');
+                log('BunnyPlayer: Using game camera as fallback (player: ' + this.id + ')', 'debug');
             } else {
                 return; // No camera available at all
             }

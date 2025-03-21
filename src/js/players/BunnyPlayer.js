@@ -115,6 +115,51 @@ class BunnyPlayer extends Player {
     onInstructionsDismissed() {
         super.onInstructionsDismissed();
     }
+    
+    /**
+     * Get current action state for networking
+     * @returns {Object} Action state
+     */
+    getActionState() {
+        const actions = {};
+        
+        // Include camera orbit angles (for syncing third-person camera between clients)
+        if (this.controls && this.controls.cameraOrbit) {
+            actions.cameraOrbit = {
+                angle: this.controls.cameraOrbit.cameraAngle,
+                angleY: this.controls.cameraOrbit.cameraAngleY
+            };
+        }
+        
+        // Include jumping state if applicable
+        if (this.physics) {
+            actions.isJumping = !this.physics.isGrounded;
+        }
+        
+        return actions;
+    }
+    
+    /**
+     * Process actions received from network
+     * @param {Object} actions - Action data
+     */
+    processNetworkActions(actions) {
+        // Call parent method first
+        super.processNetworkActions(actions);
+        
+        // Handle camera orbit angles for visual consistency
+        if (actions.cameraOrbit && this.controls && this.controls.cameraOrbit) {
+            // We only use this for visual consistency, not for actual camera control
+            // This helps other clients see which way the bunny is looking
+            if (actions.cameraOrbit.angle !== undefined) {
+                this.controls.cameraOrbit.targetCameraAngle = actions.cameraOrbit.angle;
+            }
+            
+            if (actions.cameraOrbit.angleY !== undefined) {
+                this.controls.cameraOrbit.targetCameraAngleY = actions.cameraOrbit.angleY;
+            }
+        }
+    }
 }
 
 export { BunnyPlayer }; 

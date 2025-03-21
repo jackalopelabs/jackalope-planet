@@ -147,12 +147,121 @@ class InputManager {
         } else if (key === 'KeyD') {
             this.keys.d = pressed;
             this.moveRight = pressed;
-        } else if (key === 'KeyT' && pressed) {
+        } 
+        
+        // Only handle special keys on keydown (not keyup)
+        if (!pressed) return;
+        
+        // Handle special key presses
+        if (key === 'KeyT') {
+            console.log('%c 🔄 T KEY PRESSED: Switching player/mode', 'background: blue; color: white; padding: 3px;');
             // Toggle between player modes (for testing purposes)
-            const newMode = this.game.switchPlayerMode();
-            console.log('Switched to player mode:', newMode);
-        } else if (key === 'Escape' && pressed) {
+            if (this.game.switchPlayerMode) {
+                const newMode = this.game.switchPlayerMode();
+                console.log('%c Mode switched to: ' + newMode, 'color: blue;');
+            }
+        } else if (key === 'Escape') {
             this.showInstructions();
+        }
+        
+        // Multiplayer and God Mode controls
+        else if (key === 'KeyG') {
+            console.log('%c 🔮 G KEY PRESSED: Toggling God Mode', 'background: purple; color: white; padding: 3px;');
+            // Toggle God Mode
+            if (this.game.toggleGodMode) {
+                const godModeState = this.game.toggleGodMode();
+                console.log('%c God Mode is now: ' + (godModeState ? 'ON' : 'OFF'), 'color: purple;');
+            } else {
+                console.log('%c ❌ toggleGodMode function not found on game object', 'color: red');
+            }
+        } else if (key === 'Digit1') {
+            console.log('%c 🐰 1 KEY PRESSED: Spawning Jackalope', 'background: green; color: white; padding: 3px;');
+            // Spawn a Jackalope
+            if (this.game.isGodMode) {
+                this.spawnPlayerForTeam('jackalope');
+            } else {
+                console.log('%c ❌ Cannot spawn Jackalope - God Mode is disabled', 'color: red');
+            }
+        } else if (key === 'Digit2') {
+            console.log('%c 👤 2 KEY PRESSED: Spawning Merc', 'background: orange; color: white; padding: 3px;');
+            // Spawn a Merc
+            if (this.game.isGodMode) {
+                this.spawnPlayerForTeam('merc');
+            } else {
+                console.log('%c ❌ Cannot spawn Merc - God Mode is disabled', 'color: red');
+            }
+        } else if (key === 'KeyP') {
+            console.log('%c ℹ️ P KEY PRESSED: Showing Player Info', 'background: teal; color: white; padding: 3px;');
+            // Toggle player info overlay
+            if (this.game.addPlayerInfoOverlay) {
+                this.game.addPlayerInfoOverlay();
+            } else {
+                console.log('%c ❌ addPlayerInfoOverlay function not found on game object', 'color: red');
+            }
+        }
+    }
+    
+    /**
+     * Spawn a test player for the specified team
+     * @param {string} team - 'jackalope' or 'merc'
+     */
+    spawnPlayerForTeam(team) {
+        console.log(`%c 🧪 ATTEMPTING TO SPAWN PLAYER FOR TEAM: ${team}`, 'background: #4a2; color: white; padding: 3px;');
+        
+        if (!this.game.isGodMode) {
+            console.log('%c ❌ Cannot spawn player - God Mode is disabled', 'color: red');
+            return null;
+        }
+        
+        // Verify createNewPlayer method exists
+        if (!this.game.createNewPlayer) {
+            console.log('%c ❌ createNewPlayer method not found on game object', 'color: red');
+            return null;
+        }
+        
+        try {
+            // Create a random position offset
+            const offset = {
+                x: (Math.random() - 0.5) * 10,
+                y: 0,
+                z: (Math.random() - 0.5) * 10
+            };
+            
+            // Count existing players of this team
+            const teamCount = this.game.players.filter(p => p.team === team).length;
+            
+            console.log(`Creating ${team} player with ID: ${team}_${teamCount + 1}`);
+            
+            // Create new player
+            const newPlayer = this.game.createNewPlayer({
+                team: team,
+                id: `${team}_${teamCount + 1}`,
+                isLocal: false, // AI controlled or remote player
+                isActive: false
+            });
+            
+            // Position the player with an offset if created successfully
+            if (newPlayer && newPlayer.model) {
+                newPlayer.model.position.x += offset.x;
+                newPlayer.model.position.z += offset.z;
+                if (newPlayer.position) {
+                    newPlayer.position.copy(newPlayer.model.position);
+                }
+                console.log(`%c ✅ Spawned ${team} player at position:`, 'color: green', newPlayer.model.position);
+            } else {
+                console.log('%c ❌ Failed to create player or player has no model', 'color: red');
+            }
+            
+            // Update player info overlay
+            if (this.game.addPlayerInfoOverlay) {
+                this.game.addPlayerInfoOverlay();
+            }
+            
+            console.log(`%c 🎮 Total players: ${this.game.players.length}`, 'color: blue');
+            return newPlayer;
+        } catch (error) {
+            console.error('Error spawning player:', error);
+            return null;
         }
     }
     
@@ -165,12 +274,19 @@ class InputManager {
             <div class="instructions-content">
                 <h2>Game Controls</h2>
                 <p>Click to play</p>
+                <h3>Basic Controls</h3>
                 <p>W, A, S, D to move</p>
                 <p>In third-person: Hold and drag mouse to orbit camera</p>
                 <p>In first-person: Mouse to look around</p>
                 <p>In first-person: Click to shoot flamethrower</p>
                 <p>Press T to toggle between modes</p>
                 <p>Press ESC to exit game mode</p>
+                
+                <h3>Multiplayer Controls</h3>
+                <p>G - Toggle God Mode (admin controls)</p>
+                <p>1 - Spawn a Jackalope (in God Mode)</p>
+                <p>2 - Spawn a Merc (in God Mode)</p>
+                <p>P - Show player info overlay</p>
             </div>
         `;
         instructions.style.position = 'absolute';

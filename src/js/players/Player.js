@@ -20,7 +20,19 @@ class Player {
         this.isGrounded = true;
         this.eyeHeight = options.eyeHeight || 1.6;
         
-        console.log('Player base class initialized');
+        // Multiplayer properties
+        this.id = options.id || `player_${Math.floor(Math.random() * 10000)}`;
+        this.team = options.team || 'unknown';
+        this.isLocal = options.isLocal !== undefined ? options.isLocal : true;
+        this.networkState = {
+            position: new THREE.Vector3(),
+            rotation: new THREE.Euler(),
+            velocity: new THREE.Vector3(),
+            timestamp: 0,
+            actions: {}
+        };
+        
+        console.log(`Player ${this.id} initialized (team: ${this.team}, local: ${this.isLocal})`);
     }
     
     init() {
@@ -28,31 +40,162 @@ class Player {
         console.warn('Player.init() should be implemented by child classes');
     }
     
-    update(delta) {
-        // Get input from controls
-        const input = this.controls ? this.controls.getInput() : null;
-        
-        // Update movement based on input
-        if (this.movement && input) {
-            this.movement.update(input, delta, this);
+    /**
+     * Update player state
+     * @param {number} delta - Time since last update in seconds
+     * @param {boolean} processInput - Whether to process input controls (only for local active player)
+     */
+    update(delta, processInput = true) {
+        // Only process input if this is the active local player
+        if (processInput && this.isLocal) {
+            // Get input from controls
+            const input = this.controls ? this.controls.getInput() : null;
+            
+            // Update movement based on input
+            if (this.movement && input) {
+                this.movement.update(input, delta, this);
+            }
+        } else if (!this.isLocal) {
+            // For remote players, interpolate position/rotation from network data
+            this.interpolateFromNetworkState(delta);
         }
         
-        // Apply physics
+        // Apply physics regardless of input source
         if (this.physics) {
             this.physics.apply(this, delta);
         }
+        
+        // If this is a local player, send state updates to the network
+        if (this.isLocal && this.game.isMultiplayerEnabled) {
+            this.sendNetworkUpdate();
+        }
+    }
+    
+    /**
+     * Set network state for remote player
+     * @param {Object} state - Network state data
+     */
+    setNetworkState(state) {
+        if (!state) return;
+        
+        // Store incoming network state for interpolation
+        if (state.position) {
+            this.networkState.position.set(state.position.x, state.position.y, state.position.z);
+        }
+        
+        if (state.rotation) {
+            this.networkState.rotation.set(state.rotation.x, state.rotation.y, state.rotation.z);
+        }
+        
+        if (state.velocity) {
+            this.networkState.velocity.set(state.velocity.x, state.velocity.y, state.velocity.z);
+        }
+        
+        this.networkState.timestamp = state.timestamp || Date.now();
+        this.networkState.actions = state.actions || {};
+        
+        // Process actions immediately
+        if (state.actions) {
+            this.processNetworkActions(state.actions);
+        }
+    }
+    
+    /**
+     * Process actions received from network
+     * @param {Object} actions - Action data
+     */
+    processNetworkActions(actions) {
+        // Process remote player actions like firing weapons, jumping, etc.
+        if (actions.fire && this.team === 'merc') {
+            // Handle firing weapon for remote merc players
+            if (actions.fire === 'start' && this.weapon) {
+                this.weapon.startFire();
+            } else if (actions.fire === 'stop' && this.weapon) {
+                this.weapon.stopFire();
+            }
+        }
+        
+        // Add other action handling as needed
+    }
+    
+    /**
+     * Interpolate position/rotation based on network state
+     * @param {number} delta - Time since last update
+     */
+    interpolateFromNetworkState(delta) {
+        if (!this.model) return;
+        
+        // Simple position interpolation
+        if (this.networkState.position.lengthSq() > 0) {
+            // Calculate interpolation factor (0.1 = smooth, 1.0 = immediate)
+            const lerpFactor = Math.min(delta * 10, 1.0);
+            
+            // Interpolate position
+            this.model.position.lerp(this.networkState.position, lerpFactor);
+            this.position.copy(this.model.position);
+            
+            // Interpolate rotation (if facing direction changed)
+            if (this.networkState.rotation) {
+                const targetRotation = new THREE.Quaternion().setFromEuler(this.networkState.rotation);
+                this.model.quaternion.slerp(targetRotation, lerpFactor);
+            }
+        }
+    }
+    
+    /**
+     * Send player state update to network
+     */
+    sendNetworkUpdate() {
+        if (!this.game.networking || !this.model) return;
+        
+        // Prepare state data to send
+        const stateData = {
+            id: this.id,
+            team: this.team,
+            position: {
+                x: this.model.position.x,
+                y: this.model.position.y,
+                z: this.model.position.z
+            },
+            rotation: {
+                x: this.model.rotation.x,
+                y: this.model.rotation.y,
+                z: this.model.rotation.z
+            },
+            velocity: {
+                x: this.velocity.x,
+                y: this.velocity.y,
+                z: this.velocity.z
+            },
+            timestamp: Date.now(),
+            actions: this.getActionState()
+        };
+        
+        // Send update using networking component
+        if (this.game.networking.updatePlayerState) {
+            this.game.networking.updatePlayerState(stateData);
+        }
+    }
+    
+    /**
+     * Get current action state for networking
+     * @returns {Object} Action state
+     */
+    getActionState() {
+        // Base implementation - child classes should override to add specific actions
+        return {};
     }
     
     handleMouseDown(event) {
-        // Forward to controls if available
-        if (this.controls) {
+        // Forward to controls if available and this is a local player
+        if (this.isLocal && this.controls) {
             this.controls.handleMouseDown(event);
         }
     }
     
     handleMouseMove(event, mouseState) {
-        // Forward to controls if available
-        if (this.controls) {
+        // Forward to controls if available and this is a local player
+        if (this.isLocal && this.controls) {
             // Check if we're in pointer lock mode
             if (document.pointerLockElement === this.game.container) {
                 // For pointer lock, use movementX/Y instead of position
@@ -74,8 +217,8 @@ class Player {
     onInstructionsDismissed() {
         console.log('Instructions dismissed, initializing controls');
         
-        // Initialize controls if not already done
-        if (this.controls && typeof this.controls.init === 'function') {
+        // Initialize controls if not already done and this is a local player
+        if (this.isLocal && this.controls && typeof this.controls.init === 'function') {
             try {
                 // Make sure we have a valid container
                 if (!this.game || !this.game.container) {
@@ -123,7 +266,7 @@ class Player {
     }
     
     cleanup() {
-        console.log('Cleaning up player');
+        console.log(`Cleaning up player ${this.id}`);
         
         // Clean up components
         if (this.controls && typeof this.controls.cleanup === 'function') {
@@ -168,8 +311,10 @@ class Player {
      * @param {MouseEvent} event - Mouse event
      */
     handleMouseUp(event) {
-        // Base implementation does nothing
-        // This will be overridden by specific player types
+        // Forward to controls if available and this is a local player
+        if (this.isLocal && this.controls && typeof this.controls.handleMouseUp === 'function') {
+            this.controls.handleMouseUp(event);
+        }
     }
 }
 

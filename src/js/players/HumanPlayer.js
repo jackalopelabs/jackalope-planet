@@ -546,6 +546,52 @@ class HumanPlayer extends Player {
             console.log('Removed first-person visuals');
         }
     }
+    
+    /**
+     * Get current action state for networking
+     * @returns {Object} Action state
+     */
+    getActionState() {
+        const actions = {};
+        
+        // Add firing state if applicable
+        if (this.weapon) {
+            actions.fire = this.isFiring ? 'start' : 'stop';
+        }
+        
+        // Include current view mode
+        actions.viewMode = this.isFirstPerson ? 'firstPerson' : 'thirdPerson';
+        
+        return actions;
+    }
+    
+    /**
+     * Process actions received from network
+     * @param {Object} actions - Action data
+     */
+    processNetworkActions(actions) {
+        // Call parent method first
+        super.processNetworkActions(actions);
+        
+        // Handle flamethrower state for remote players
+        if (actions.fire && this.weapon) {
+            if (actions.fire === 'start' && !this.isFiring) {
+                this.isFiring = true;
+                this.weapon.startFire();
+            } else if (actions.fire === 'stop' && this.isFiring) {
+                this.isFiring = false;
+                this.weapon.stopFire();
+            }
+        }
+        
+        // Handle view mode changes
+        if (actions.viewMode) {
+            const shouldBeFirstPerson = actions.viewMode === 'firstPerson';
+            if (shouldBeFirstPerson !== this.isFirstPerson) {
+                this.toggleViewMode(shouldBeFirstPerson);
+            }
+        }
+    }
 }
 
 export { HumanPlayer }; 

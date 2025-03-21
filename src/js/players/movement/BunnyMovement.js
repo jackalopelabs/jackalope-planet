@@ -63,19 +63,57 @@ class BunnyMovement extends BaseMovement {
             this.movementSpeed * this.sprintMultiplier : 
             this.movementSpeed;
         
-        if (moveDirection.z < 0) { // Forward
+        // DEBUG: Log the movement direction to diagnose issues
+        console.log(`%c 🚲 BunnyMovement.update for ${player.id}:`, 'color: #afa;', {
+            moveDirection: moveDirection,
+            z: moveDirection.z,
+            x: moveDirection.x,
+            delta: delta,
+            speed: currentSpeed
+        });
+        
+        // CRITICAL FIX: Handle both object-based moveDirection and individual x/z components
+        let moveDirZ = 0;
+        let moveDirX = 0;
+        
+        // Handle object-style moveDirection from controls
+        if (moveDirection) {
+            if (typeof moveDirection.z === 'number') moveDirZ = moveDirection.z;
+            if (typeof moveDirection.x === 'number') moveDirX = moveDirection.x;
+        }
+        
+        // Also check for movement flags in case moveDirection isn't provided correctly
+        // These might come from the Player's processInput method
+        if (input.moveForward) moveDirZ = -1;
+        if (input.moveBackward) moveDirZ = 1;
+        if (input.moveLeft) moveDirX = -1;
+        if (input.moveRight) moveDirX = 1;
+        
+        // Check if any key from input.keys is pressed (as a backup)
+        if (input.keys) {
+            if (input.keys.w) moveDirZ = -1;
+            if (input.keys.s) moveDirZ = 1;
+            if (input.keys.a) moveDirX = -1;
+            if (input.keys.d) moveDirX = 1;
+        }
+        
+        // Log the final movement direction after all checks
+        console.log(`%c 🚲 FINAL Movement values: X=${moveDirX}, Z=${moveDirZ}`, 'color: #afa;');
+        
+        // Now apply movement using the determined values
+        if (moveDirZ < 0) { // Forward
             movementVector.add(forward.clone().multiplyScalar(currentSpeed * delta));
             isMoving = true;
         }
-        if (moveDirection.z > 0) { // Back
+        if (moveDirZ > 0) { // Back
             movementVector.add(forward.clone().multiplyScalar(-currentSpeed * delta));
             isMoving = true;
         }
-        if (moveDirection.x < 0) { // Left
+        if (moveDirX < 0) { // Left
             movementVector.add(right.clone().multiplyScalar(-currentSpeed * delta));
             isMoving = true;
         }
-        if (moveDirection.x > 0) { // Right
+        if (moveDirX > 0) { // Right
             movementVector.add(right.clone().multiplyScalar(currentSpeed * delta));
             isMoving = true;
         }

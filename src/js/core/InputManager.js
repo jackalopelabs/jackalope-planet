@@ -26,6 +26,9 @@ class InputManager {
         // First-person mode flag - this will be synced with game.gameMode
         this.isFirstPerson = (this.game && this.game.gameMode === 'first_person');
         
+        // Initialize player ID counter for new player creation
+        this.playerIdCounter = 1;
+        
         console.log('InputManager created - FP mode:', this.isFirstPerson);
         this.setupEventListeners();
     }
@@ -134,20 +137,68 @@ class InputManager {
     handleKey(event, pressed) {
         const key = event.code;
         
+        // Debug key events occasionally (but only on keydown)
+        const isMovementKey = key === 'KeyW' || key === 'KeyA' || key === 'KeyS' || key === 'KeyD';
+        
+        // Enhanced logging for WASD keys to debug movement issues
+        if (isMovementKey) {
+            console.log(`%c 🎮 KEY ${pressed ? 'PRESSED' : 'RELEASED'}: ${key} - Active player: ${this.game.player?.id || 'none'}`, 
+                        'background: #335; color: #afa; padding: 2px 5px;');
+            
+            // Check all necessary components for movement to work
+            if (pressed) {
+                const hasPlayer = !!this.game.player;
+                const isLocalPlayer = hasPlayer && !!this.game.player.isLocal;
+                const isActivePlayer = hasPlayer && !!this.game.player.isActive;
+                const hasMovement = hasPlayer && !!this.game.player.movement;
+                const hasPhysics = hasPlayer && !!this.game.player.physics;
+                
+                console.log(`%c 🎮 Movement components check:`, 'color: #afa;', {
+                    hasPlayer,
+                    isLocalPlayer,
+                    isActivePlayer,
+                    hasMovement,
+                    hasPhysics,
+                    keyState: {...this.keys}
+                });
+            }
+        } else if (pressed && 
+            (key === 'KeyT' || key === 'KeyG' || key === 'Digit1' || key === 'Digit2' || key === 'KeyD')) {
+            console.log('%c 🔑 KEY PRESSED: ' + key, 'background: #335; color: #fff; padding: 2px 5px;');
+            console.log('%c Current active player:', 'color: #aaf;', 
+                        this.game.player ? `${this.game.player.id} (${this.game.player.team})` : 'none');
+        }
+        
         // Update key state
         if (key === 'KeyW') {
             this.keys.w = pressed;
             this.moveForward = pressed;
+            // Force immediate input update
+            if (this.game.player && this.game.player.isLocal && this.game.player.isActive) {
+                console.log(`%c 🎮 W key ${pressed ? 'PRESSED' : 'RELEASED'}: ${this.keys.w}`, 'color: #afa;');
+            }
         } else if (key === 'KeyA') {
             this.keys.a = pressed;
             this.moveLeft = pressed;
+            // Force immediate input update
+            if (this.game.player && this.game.player.isLocal && this.game.player.isActive) {
+                console.log(`%c 🎮 A key ${pressed ? 'PRESSED' : 'RELEASED'}: ${this.keys.a}`, 'color: #afa;');
+            }
         } else if (key === 'KeyS') {
             this.keys.s = pressed;
             this.moveBackward = pressed;
+            // Force immediate input update
+            if (this.game.player && this.game.player.isLocal && this.game.player.isActive) {
+                console.log(`%c 🎮 S key ${pressed ? 'PRESSED' : 'RELEASED'}: ${this.keys.s}`, 'color: #afa;');
+            }
         } else if (key === 'KeyD') {
             this.keys.d = pressed;
             this.moveRight = pressed;
-        } 
+            // Force immediate input update
+            if (this.game.player && this.game.player.isLocal && this.game.player.isActive) {
+                console.log(`%c 🎮 D key ${pressed ? 'PRESSED' : 'RELEASED'}: ${this.keys.d}`, 'color: #afa;');
+            }
+        }
         
         // Only handle special keys on keydown (not keyup)
         if (!pressed) return;
@@ -157,11 +208,49 @@ class InputManager {
             console.log('%c 🔄 T KEY PRESSED: Switching player/mode', 'background: blue; color: white; padding: 3px;');
             // Toggle between player modes (for testing purposes)
             if (this.game.switchPlayerMode) {
+                const oldMode = this.game.gameMode;
                 const newMode = this.game.switchPlayerMode();
-                console.log('%c Mode switched to: ' + newMode, 'color: blue;');
+                console.log('%c Mode switched: ' + oldMode + ' → ' + newMode, 'color: blue;');
+                
+                // Debug current active player after switch
+                setTimeout(() => {
+                    console.log('%c After T key - Current active player:', 'color: #ccf;', 
+                              this.game.player ? `${this.game.player.id} (${this.game.player.team})` : 'none');
+                }, 200);
             }
         } else if (key === 'Escape') {
             this.showInstructions();
+        } else if (key === 'KeyD') {
+            // Check if Shift+D for enhanced diagnostics
+            if (event.shiftKey) {
+                console.log('%c 🔍 SHIFT+D KEY PRESSED: Running ENHANCED player state diagnosis', 
+                           'background: #ff0; color: black; font-weight: bold; padding: 5px;');
+                
+                // Toggle diagnostic overlay
+                if (this.game.toggleDebugOverlay) {
+                    this.game.toggleDebugOverlay();
+                }
+                
+                if (this.game.diagnosePlayerState) {
+                    // Force fix any issues found in diagnosis
+                    this.game.diagnosePlayerState(true);
+                    
+                    // Force re-selection of the active player
+                    if (this.game.player) {
+                        this.game.setActivePlayer(this.game.player);
+                    }
+                } else {
+                    console.log('%c ❌ diagnosePlayerState function not found on game object', 'color: red');
+                }
+            } else {
+                // Regular D key - standard diagnosis
+                console.log('%c 🔍 D KEY PRESSED: Running player state diagnosis', 'background: yellow; color: black; padding: 3px;');
+                if (this.game.diagnosePlayerState) {
+                    this.game.diagnosePlayerState();
+                } else {
+                    console.log('%c ❌ diagnosePlayerState function not found on game object', 'color: red');
+                }
+            }
         }
         
         // Multiplayer and God Mode controls
@@ -178,7 +267,8 @@ class InputManager {
             console.log('%c 🐰 1 KEY PRESSED: Spawning Jackalope', 'background: green; color: white; padding: 3px;');
             // Spawn a Jackalope
             if (this.game.isGodMode) {
-                this.spawnPlayerForTeam('jackalope');
+                const newPlayer = this.spawnPlayerForTeam('jackalope');
+                console.log('%c New jackalope spawned:', 'color: green;', newPlayer ? newPlayer.id : 'failed');
             } else {
                 console.log('%c ❌ Cannot spawn Jackalope - God Mode is disabled', 'color: red');
             }
@@ -186,7 +276,14 @@ class InputManager {
             console.log('%c 👤 2 KEY PRESSED: Spawning Merc', 'background: orange; color: white; padding: 3px;');
             // Spawn a Merc
             if (this.game.isGodMode) {
-                this.spawnPlayerForTeam('merc');
+                const newPlayer = this.spawnPlayerForTeam('merc');
+                console.log('%c New merc spawned:', 'color: orange;', newPlayer ? newPlayer.id : 'failed');
+                
+                // Debug the current active player after spawning
+                setTimeout(() => {
+                    console.log('%c After spawning - Active player:', 'color: #ffa;', 
+                              this.game.player ? `${this.game.player.id} (${this.game.player.team})` : 'none');
+                }, 100);
             } else {
                 console.log('%c ❌ Cannot spawn Merc - God Mode is disabled', 'color: red');
             }
@@ -205,64 +302,99 @@ class InputManager {
      * Spawn a test player for the specified team
      * @param {string} team - 'jackalope' or 'merc'
      */
-    spawnPlayerForTeam(team) {
-        console.log(`%c 🧪 ATTEMPTING TO SPAWN PLAYER FOR TEAM: ${team}`, 'background: #4a2; color: white; padding: 3px;');
+    spawnPlayerForTeam(team, options = {}) {
+        console.log(`%c🔄 InputManager.spawnPlayerForTeam called with team=${team}`, 'color: #ff9; background: #333; padding: 3px;');
         
-        if (!this.game.isGodMode) {
-            console.log('%c ❌ Cannot spawn player - God Mode is disabled', 'color: red');
-            return null;
-        }
+        // Normalize team and generate player ID
+        team = String(team);
+        const id = `${team}_${this.playerIdCounter++}`;
         
-        // Verify createNewPlayer method exists
-        if (!this.game.createNewPlayer) {
-            console.log('%c ❌ createNewPlayer method not found on game object', 'color: red');
-            return null;
-        }
+        // Create player options object with explicit local and active settings
+        const playerOptions = {
+            ...options,
+            team,
+            id,
+            isLocal: true,  // CRITICAL: Explicitly set isLocal to true
+            isActive: true, // CRITICAL: Explicitly set isActive to true
+        };
         
-        try {
-            // Create a random position offset
-            const offset = {
-                x: (Math.random() - 0.5) * 10,
-                y: 0,
-                z: (Math.random() - 0.5) * 10
-            };
+        // SUPER IMPORTANT: Set these as literals, not variables or references
+        Object.defineProperty(playerOptions, 'isLocal', { 
+            value: true, 
+            writable: false, 
+            configurable: false 
+        });
+        Object.defineProperty(playerOptions, 'isActive', { 
+            value: true, 
+            writable: false, 
+            configurable: false 
+        });
+        
+        console.log(`%c📦 FINAL Player options before creation:`, 'color: #afa;');
+        console.log('%c  team: ' + playerOptions.team, 'color: #afa;');
+        console.log('%c  id: ' + playerOptions.id, 'color: #afa;');
+        console.log('%c  isLocal: ' + playerOptions.isLocal, 'color: #afa; font-weight: bold;');
+        console.log('%c  isActive: ' + playerOptions.isActive, 'color: #afa; font-weight: bold;');
+        
+        // Create a brand new object with copies of these values to prevent reference issues
+        const finalOptions = {
+            team: String(team),
+            id: String(id),
+            isLocal: true, 
+            isActive: true
+        };
+        
+        // Add more paranoid logging before calling createNewPlayer
+        console.log(`%c⚠️ SANITY CHECK: final options REALLY ARE:`, 'color: #ff0; background: #505; padding: 3px;');
+        console.log(`isLocal type: ${typeof finalOptions.isLocal}, value: ${finalOptions.isLocal}`);
+        console.log(`isActive type: ${typeof finalOptions.isActive}, value: ${finalOptions.isActive}`);
+        
+        // CRITICAL FIX: Call createNewPlayer with a single options parameter, not multiple params
+        console.log(`%c🔶 About to call game.createNewPlayer with these options:`, 'background: #550; color: #fff; padding: 3px;');
+        console.log(finalOptions);
+        
+        const player = this.game.createNewPlayer(finalOptions);
+        
+        // Triple-check: force these values after creation
+        if (player) {
+            console.log(`%c✅ Player created: ${player.id} (team: ${player.team})`, 'color: #afa;');
             
-            // Count existing players of this team
-            const teamCount = this.game.players.filter(p => p.team === team).length;
+            // CRITICAL: Force-set these values after creation
+            player.isLocal = true;
+            player.isActive = true;
             
-            console.log(`Creating ${team} player with ID: ${team}_${teamCount + 1}`);
+            // CRITICAL: Force-set the game's active player
+            this.game.player = player; // This is the property used in Game.js
             
-            // Create new player
-            const newPlayer = this.game.createNewPlayer({
-                team: team,
-                id: `${team}_${teamCount + 1}`,
-                isLocal: false, // AI controlled or remote player
-                isActive: false
-            });
+            // CRITICAL: Force-call setActivePlayer to update all dependencies
+            this.game.setActivePlayer(player);
             
-            // Position the player with an offset if created successfully
-            if (newPlayer && newPlayer.model) {
-                newPlayer.model.position.x += offset.x;
-                newPlayer.model.position.z += offset.z;
-                if (newPlayer.position) {
-                    newPlayer.position.copy(newPlayer.model.position);
+            // Check if the update took effect
+            console.log(`%c👀 Player state after creation: isLocal=${player.isLocal}, isActive=${player.isActive}`, 
+                        'color: #ffa; background: #333; padding: 3px;');
+            console.log(`%c👀 Game active player: ${this.game.player ? this.game.player.id : 'none'}`, 
+                        'color: #ffa; background: #333; padding: 3px;');
+                        
+            // Run game diagnostics 
+            if (typeof this.game.diagnosePlayerState === 'function') {
+                this.game.diagnosePlayerState();
+            }
+            
+            // Set a timeout to check player state again after a short delay
+            setTimeout(() => {
+                console.log(`%c⏱️ Delayed check - Player ${player.id} state: isLocal=${player.isLocal}, isActive=${player.isActive}`, 
+                           'color: #ffa; background: #333; padding: 3px;');
+                console.log(`%c⏱️ Delayed check - Game active player: ${this.game.player ? this.game.player.id : 'none'}`, 
+                           'color: #ffa; background: #333; padding: 3px;');
+                if (typeof this.game.diagnosePlayerState === 'function') {
+                    this.game.diagnosePlayerState(true); // Force fix any issues
                 }
-                console.log(`%c ✅ Spawned ${team} player at position:`, 'color: green', newPlayer.model.position);
-            } else {
-                console.log('%c ❌ Failed to create player or player has no model', 'color: red');
-            }
-            
-            // Update player info overlay
-            if (this.game.addPlayerInfoOverlay) {
-                this.game.addPlayerInfoOverlay();
-            }
-            
-            console.log(`%c 🎮 Total players: ${this.game.players.length}`, 'color: blue');
-            return newPlayer;
-        } catch (error) {
-            console.error('Error spawning player:', error);
-            return null;
+            }, 500);
+        } else {
+            console.error(`Failed to create player for team ${team}`);
         }
+        
+        return player;
     }
     
     addInstructions(container) {
@@ -344,6 +476,26 @@ class InputManager {
         };
     }
     
+    /**
+     * Get the current input state, including key states and actions
+     * This method is used by the physics system to determine movement
+     * @returns {Object} Input state object
+     */
+    getInputState() {
+        const keyState = this.getKeysState();
+        
+        // Create a standard format for input that physics components can use
+        return {
+            keys: keyState,
+            actions: {
+                jump: this.keys.space || false,
+                sprint: this.keys.shift || false
+            },
+            // Add additional properties that might be needed by physics
+            isFirstPerson: this.isFirstPerson
+        };
+    }
+    
     getCameraOrbitState() {
         return {
             cameraAngle: this.cameraAngle,
@@ -358,6 +510,29 @@ class InputManager {
         this.cameraAngleY = angles.cameraAngleY ?? this.cameraAngleY;
         this.targetCameraAngle = angles.targetCameraAngle ?? this.targetCameraAngle;
         this.targetCameraAngleY = angles.targetCameraAngleY ?? this.targetCameraAngleY;
+    }
+    
+    setupKeyboardListeners() {
+        // Keyboard events
+        document.addEventListener('keydown', (event) => {
+            if (this.controlsEnabled) {
+                this.handleKeyDown(event);
+            }
+            
+            // Add diagnostics key (uppercase D) that works even if controls are disabled
+            if (event.key === 'D' && event.shiftKey) {
+                console.log('%c🔍 Diagnostics key pressed', 'color: #ff0; background: #33a; padding: 3px;');
+                if (this.game && typeof this.game.diagnosePlayerState === 'function') {
+                    this.game.diagnosePlayerState();
+                }
+            }
+        });
+        
+        document.addEventListener('keyup', (event) => {
+            if (this.controlsEnabled) {
+                this.handleKeyUp(event);
+            }
+        });
     }
 }
 

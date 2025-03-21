@@ -1,29 +1,65 @@
 import * as THREE from 'three';
+import { HumanPhysics } from './physics/HumanPhysics';
+import { BunnyPhysics } from './physics/BunnyPhysics';
 
 class Player {
-    constructor(game, options = {}) {
+    constructor(game, scene, options = {}) {
+        // Log options for debugging
+        console.log(`%c Player constructor called with options:`, 'color: #aaa;', options);
+        
         this.game = game;
-        this.scene = game.scene;
-        this.camera = game.camera;
-        this.model = null;
-        this.position = new THREE.Vector3(0, 0, 0);
-        this.direction = new THREE.Vector3(0, 0, -1);
-        this.targetDirection = new THREE.Vector3(0, 0, -1);
+        this.scene = scene;
         
-        // Component references - to be set by child classes
-        this.physics = null;
-        this.movement = null;
-        this.controls = null;
-        
-        // Common player properties
-        this.velocity = new THREE.Vector3(0, 0, 0);
-        this.isGrounded = true;
-        this.eyeHeight = options.eyeHeight || 1.6;
-        
-        // Multiplayer properties
+        // Basic properties
         this.id = options.id || `player_${Math.floor(Math.random() * 10000)}`;
         this.team = options.team || 'unknown';
-        this.isLocal = options.isLocal !== undefined ? options.isLocal : true;
+        
+        // CRITICAL: Ensure isLocal property is explicitly set as a true boolean for local players
+        // This fixes bugs where isLocal can be lost or overwritten
+        this.isLocal = options.isLocal === true;
+        
+        // Force boolean conversion
+        if (options.isLocal === 'true' || options.isLocal === 1) {
+            this.isLocal = true;
+        }
+        
+        // CRITICAL: Ensure the isActive property is reliable
+        this.isActive = options.isActive === true;
+        
+        // Force boolean conversion
+        if (options.isActive === 'true' || options.isActive === 1) {
+            this.isActive = true;
+        }
+        
+        // Store original values for comparison
+        this._originalIsLocal = this.isLocal;
+        this._originalIsActive = this.isActive;
+        this._originalOptions = JSON.parse(JSON.stringify(options)); // Deep copy of initial options
+        
+        // Player state
+        this.health = options.health || 100;
+        this.maxHealth = options.maxHealth || 100;
+        this.isAlive = true;
+        
+        // 3D properties
+        this.eyeHeight = options.eyeHeight || 1.7; // meters above ground
+        this.position = new THREE.Vector3(0, this.eyeHeight, 0);
+        this.rotation = new THREE.Euler(0, 0, 0, 'YXZ');
+        
+        // CRITICAL FIX: Initialize direction vector to prevent MathUtils.lerp errors
+        this.direction = new THREE.Vector3(0, 0, -1); // Default forward direction
+        
+        this.model = null;
+        
+        // Camera handling - make sure we have a reference to a camera
+        if (game && game.camera) {
+            this.camera = game.camera;
+        } else {
+            console.warn(`%c Player.constructor: No camera available from game (player: ${this.id})`, 'color: orange;');
+            this.camera = null;
+        }
+        
+        // Network state for remote player interpolation
         this.networkState = {
             position: new THREE.Vector3(),
             rotation: new THREE.Euler(),
@@ -32,7 +68,13 @@ class Player {
             actions: {}
         };
         
-        console.log(`Player ${this.id} initialized (team: ${this.team}, local: ${this.isLocal})`);
+        // Components (these will be set by subclasses)
+        this.physics = null;
+        this.movement = null;
+        this.controls = null;
+        
+        // Debug logs
+        console.log(`Player created: ${this.id} (team: ${this.team}, local: ${this.isLocal}, active: ${this.isActive})`);
     }
     
     init() {
@@ -46,23 +88,79 @@ class Player {
      * @param {boolean} processInput - Whether to process input controls (only for local active player)
      */
     update(delta, processInput = true) {
-        // Only process input if this is the active local player
-        if (processInput && this.isLocal) {
-            // Get input from controls
-            const input = this.controls ? this.controls.getInput() : null;
+        // CRITICAL DEBUG: Log the player state occasionally to avoid console spam
+        const shouldLogUpdate = Math.random() < 0.01; // Log roughly 1% of updates
+
+        if (shouldLogUpdate) {
+            // Color-coded console log to easily identify player updates
+            console.log(
+                `%c 👤 PLAYER UPDATE: ${this.id} (${this.team}) - isActive: ${this.isActive}, processInput: ${processInput}`, 
+                `background: ${this.isActive ? '#252' : '#522'}; color: ${this.isActive ? '#afa' : '#faa'}; padding: 3px;`
+            );
             
-            // Update movement based on input
-            if (this.movement && input) {
-                this.movement.update(input, delta, this);
+            // Check for mismatch between game's active player and this player's isActive state
+            if (this.game.player === this && !this.isActive) {
+                console.log(`%c ⚠️ CRITICAL: Player state mismatch! This player (${this.id}) is game.player but isActive=false`, 
+                           'background: red; color: white; padding: 3px;');
             }
-        } else if (!this.isLocal) {
-            // For remote players, interpolate position/rotation from network data
-            this.interpolateFromNetworkState(delta);
+            else if (this.game.player !== this && this.isActive) {
+                console.log(`%c ⚠️ CRITICAL: Player state mismatch! This player (${this.id}) has isActive=true but is not game.player`, 
+                           'background: red; color: white; padding: 3px;');
+            }
+        }
+
+        // Only process input if this is an active local player AND processInput flag is true
+        if (this.isLocal && processInput) {
+            // MORE DETAILED LOG: Show when input is being processed
+            if (shouldLogUpdate) {
+                console.log(
+                    `%c 🎮 PROCESSING INPUT FOR: ${this.id} - Keyboard state: W:${this.game.inputManager.keys.w}, A:${this.game.inputManager.keys.a}, S:${this.game.inputManager.keys.s}, D:${this.game.inputManager.keys.d}`, 
+                    'background: #225; color: #aaf; padding: 2px;'
+                );
+            }
+            
+            // Process player input if player is active
+            this.processInput(delta);
         }
         
-        // Apply physics regardless of input source
-        if (this.physics) {
-            this.physics.apply(this, delta);
+        // CRITICAL FIX: Add defensive check for physics object and update method
+        if (this.physics && typeof this.physics.apply === 'function') {
+            // Update physics - use apply method from physics component (not update)
+            try {
+                // Get input from game's input manager if available
+                const input = this.game?.inputManager?.getInputState() || {};
+                this.physics.apply(this, delta, input);
+            } catch (error) {
+                console.error(`Physics error for player ${this.id}:`, error);
+            }
+        } else if (shouldLogUpdate) {
+            // Log missing physics for debugging
+            console.log(`%c ⚠️ Physics missing or invalid for player ${this.id}`, 'color: orange;');
+            
+            // If physics doesn't exist, try to reinitialize it if possible
+            if (!this.physics && this.game && this.game.scene) {
+                console.log(`%c 🔄 Attempting to reinitialize physics for player ${this.id}`, 'color: #aaf;');
+                if (typeof this.initPhysics === 'function') {
+                    this.initPhysics();
+                }
+            }
+        }
+        
+        // Update position from physics - ONLY if physics exists and has a position
+        if (this.physics && this.model && this.physics.position) {
+            this.position.copy(this.physics.position);
+            this.model.position.copy(this.physics.position);
+        }
+
+        // Update camera if this is the current player
+        if (this.isActive && this.camera) {
+            if (typeof this.updateCameraPosition === 'function') {
+                this.updateCameraPosition(delta);
+            } else {
+                if (Math.random() < 0.01) {
+                    console.warn(`Player ${this.id} (${this.team}) has no updateCameraPosition method`);
+                }
+            }
         }
         
         // If this is a local player, send state updates to the network
@@ -77,6 +175,9 @@ class Player {
      */
     setNetworkState(state) {
         if (!state) return;
+        
+        // CRITICAL: Store current isLocal value to preserve it
+        const wasLocal = this.isLocal;
         
         // Store incoming network state for interpolation
         if (state.position) {
@@ -93,6 +194,9 @@ class Player {
         
         this.networkState.timestamp = state.timestamp || Date.now();
         this.networkState.actions = state.actions || {};
+        
+        // CRITICAL: Preserve isLocal value - NEVER let it be overwritten by network state
+        this.isLocal = wasLocal;
         
         // Process actions immediately
         if (state.actions) {
@@ -187,6 +291,13 @@ class Player {
     }
     
     handleMouseDown(event) {
+        // Debug which player is receiving mouse down events
+        const isActive = this === this.game.player;
+        if (isActive && this.isLocal) {
+            console.log(`%c 🖱️ Mouse down event received by ${this.id} (${this.team})`, 
+                      'background: #335; color: #afa; padding: 2px;');
+        }
+        
         // Forward to controls if available and this is a local player
         if (this.isLocal && this.controls) {
             this.controls.handleMouseDown(event);
@@ -194,6 +305,13 @@ class Player {
     }
     
     handleMouseMove(event, mouseState) {
+        // Debug mouse move events occasionally
+        const isActive = this === this.game.player;
+        if (isActive && this.isLocal && Math.random() < 0.001) {
+            console.log(`%c 🖱️ Mouse move processed by ${this.id} (${this.team})`, 
+                      'background: #335; color: #8cf; padding: 2px;');
+        }
+        
         // Forward to controls if available and this is a local player
         if (this.isLocal && this.controls) {
             // Check if we're in pointer lock mode
@@ -314,6 +432,182 @@ class Player {
         // Forward to controls if available and this is a local player
         if (this.isLocal && this.controls && typeof this.controls.handleMouseUp === 'function') {
             this.controls.handleMouseUp(event);
+        }
+    }
+    
+    /**
+     * Process input controls
+     * This is called only for the local active player
+     * @param {number} deltaTime - Time since last update
+     */
+    processInput(deltaTime) {
+        // Skip processing if not active
+        if (!this.isActive) {
+            console.log(`%c ℹ️ Skipping input processing - player ${this.id} is not active`, 'color: gray;');
+            return;
+        }
+        
+        // Defensive check: ensure we have required components
+        if (!this.controls) {
+            console.log(`%c ⚠️ Cannot process input for ${this.id} - missing controls component`, 'color: orange;');
+            return;
+        }
+        
+        // Check for valid input manager
+        if (!this.game || !this.game.inputManager) {
+            console.log(`%c ⚠️ Cannot process input for ${this.id} - missing input manager`, 'color: orange;');
+            return;
+        }
+        
+        // Get input values
+        const inputManager = this.game.inputManager;
+        const moveForward = !!inputManager.keys.w; // Force boolean conversion
+        const moveBackward = !!inputManager.keys.s;
+        const moveLeft = !!inputManager.keys.a;
+        const moveRight = !!inputManager.keys.d;
+        
+        // Debug log actual key state from input manager
+        console.log(`%c 🎮 Input for ${this.id}: W:${moveForward} A:${moveLeft} S:${moveBackward} D:${moveRight}`, 
+                   'background: #225; color: #cfc; padding: 2px;');
+        
+        // Calculate movement vector
+        const movementVector = new THREE.Vector3(0, 0, 0);
+        
+        if (moveForward) movementVector.z -= 1;
+        if (moveBackward) movementVector.z += 1;
+        if (moveLeft) movementVector.x -= 1;
+        if (moveRight) movementVector.x += 1;
+        
+        // Debug log movement vector
+        const hasMovement = movementVector.lengthSq() > 0;
+        if (hasMovement) {
+            console.log(`%c 🚶 Movement vector for ${this.id}: (${movementVector.x.toFixed(1)}, ${movementVector.z.toFixed(1)})`, 
+                       'color: #3f3;');
+        }
+        
+        // Normalize movement vector to prevent faster diagonal movement
+        if (hasMovement) {
+            movementVector.normalize();
+            
+            // Defensive check: ensure we have a movement component
+            if (this.movement && typeof this.movement.move === 'function') {
+                // Apply movement with the appropriate speed
+                this.movement.move(movementVector, deltaTime);
+                console.log(`%c ✅ Applied movement to ${this.id}`, 'color: #3f3;');
+            } else {
+                console.log(`%c ⚠️ Cannot move player ${this.id} - missing movement component`, 'color: orange;');
+                
+                // Attempt fallback movement - direct model position update
+                if (this.model && moveForward) {
+                    // Get direction vector (forward direction in model space)
+                    let direction = new THREE.Vector3(0, 0, -1);
+                    if (this.model.quaternion) {
+                        direction.applyQuaternion(this.model.quaternion);
+                    }
+                    direction.normalize().multiplyScalar(5 * deltaTime); // Simple movement speed
+                    
+                    // Apply movement directly
+                    this.model.position.add(direction);
+                    this.position.copy(this.model.position);
+                    console.log(`%c 🚨 Used emergency fallback movement for ${this.id}`, 'color: orange;');
+                }
+            }
+        }
+        
+        // Process any other input (jump, shoot, etc.) - to be implemented in child classes
+    }
+    
+    /**
+     * Initialize or re-initialize physics for this player
+     * Should be overridden by subclasses but this provides basic recovery
+     */
+    initPhysics() {
+        console.log(`%c 🔄 Attempting to initialize physics for player ${this.id} (${this.team})`, 'color: #aaf;');
+        
+        // Get the correct physics class based on player team
+        let PhysicsClass = null;
+        try {
+            if (this.team === 'human') {
+                // Try to dynamically import the HumanPhysics class
+                if (typeof HumanPhysics !== 'undefined') {
+                    PhysicsClass = HumanPhysics;
+                } else {
+                    console.warn(`Could not find HumanPhysics class for player ${this.id}`);
+                }
+            } else if (this.team === 'bunny') {
+                // Try to dynamically import the BunnyPhysics class
+                if (typeof BunnyPhysics !== 'undefined') {
+                    PhysicsClass = BunnyPhysics;
+                } else {
+                    console.warn(`Could not find BunnyPhysics class for player ${this.id}`);
+                }
+            } else if (this.team === 'merc') {
+                // Use HumanPhysics for mercenary players
+                if (typeof HumanPhysics !== 'undefined') {
+                    PhysicsClass = HumanPhysics;
+                } else {
+                    console.warn(`Could not find HumanPhysics class for merc player ${this.id}`);
+                }
+            }
+            
+            // If we found a suitable physics class, create and set it
+            if (PhysicsClass) {
+                const physics = new PhysicsClass(this._originalOptions.physics || {});
+                this.setPhysics(physics);
+                
+                // Set the scene reference if available
+                if (this.game && this.game.scene && typeof physics.setScene === 'function') {
+                    physics.setScene(this.game.scene);
+                }
+                
+                console.log(`%c ✅ Successfully initialized physics for player ${this.id}`, 'color: #5f5;');
+                return true;
+            } else {
+                console.error(`%c ❌ Could not initialize physics for player ${this.id} - no suitable physics class found`, 'color: #f55;');
+                return false;
+            }
+        } catch (error) {
+            console.error(`%c ❌ Error initializing physics for player ${this.id}:`, 'color: #f55;', error);
+            return false;
+        }
+    }
+    
+    /**
+     * Set the physics component for this player
+     * @param {Object} physics - The physics component
+     */
+    setPhysics(physics) {
+        // Store the physics component
+        this.physics = physics;
+        
+        // Set initial position if physics has a position property
+        if (this.physics && this.physics.position) {
+            this.physics.position.copy(this.position);
+        }
+        
+        // If the physics has a setScene method and the game scene exists, set it
+        if (this.physics && typeof this.physics.setScene === 'function' && this.game && this.game.scene) {
+            this.physics.setScene(this.game.scene);
+        }
+        
+        console.log(`Physics component set for player ${this.id}`);
+    }
+
+    /**
+     * Base implementation of updateCameraPosition for the Player class
+     * This is overridden by child classes (BunnyPlayer, HumanPlayer) for specific camera behaviors
+     * @param {number} delta - Time since last update
+     */
+    updateCameraPosition(delta) {
+        // Base implementation - child classes will override with their specific camera logic
+        if (this.model && this.camera) {
+            // Simple follow camera if nothing else is implemented
+            const offset = new THREE.Vector3(0, 2, 5);
+            this.camera.position.copy(this.model.position).add(offset);
+            this.camera.lookAt(this.model.position);
+        } else if (Math.random() < 0.01) {
+            // Occasional warning for debugging
+            console.warn(`Cannot update camera position for ${this.id} - Missing model or camera`);
         }
     }
 }

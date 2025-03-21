@@ -28,6 +28,18 @@
 - [ ] UI elements display correctly
 - [ ] InputManager handles all inputs
 
+## Multiplayer & God Mode Features
+- [ ] 'G' key toggles God Mode on/off
+- [ ] '1' key spawns a new Jackalope player in God Mode
+- [ ] '2' key spawns a new Merc player in God Mode
+- [ ] 'T' key cycles between players in God Mode
+- [ ] Active player is correctly highlighted in player list
+- [ ] Controls properly transfer to the active player
+- [ ] First-person camera works when switching to Merc
+- [ ] Third-person camera works when switching to Jackalope
+- [ ] Player info overlay shows correct information ('P' key)
+- [ ] Multiple players can exist in the same scene
+
 ## Shortcode Testing
 - [ ] Basic shortcode `[jackalope-planet]` works
 - [ ] Height parameter works `[jackalope-planet height="500px"]`

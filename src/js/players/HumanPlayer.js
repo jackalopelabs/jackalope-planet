@@ -7,15 +7,37 @@ import { Flamethrower } from './weapons/Flamethrower';
 
 class HumanPlayer extends Player {
     constructor(game, options = {}) {
-        super(game, {
+        // CRITICAL FIX: Ensure isLocal and isActive are true
+        const modifiedOptions = {
             eyeHeight: 1.6,
-            ...options
-        });
+            ...options,
+            isLocal: true, // Force isLocal to true
+            isActive: true // Force isActive to true
+        };
+        
+        // Get scene reference from game
+        const scene = game ? game.scene : null;
+        if (!scene && game) {
+            console.warn(`%c HumanPlayer (constructor): Scene reference not available from game. Player ID: ${options.id || 'unknown'}`, 'color: orange;');
+        }
+        
+        // Pass scene as second parameter to match updated Player constructor
+        super(game, scene, modifiedOptions);
+        
+        // CRITICAL: Force isLocal to true AGAIN after super constructor (defensive)
+        this.isLocal = true;
         
         // Camera properties
         this.thirdPersonDistance = options.thirdPersonDistance || 5;
         this.thirdPersonHeight = options.thirdPersonHeight || 2;
         this.cameraTarget = new THREE.Vector3();
+        
+        // CRITICAL FIX: Make sure camera is properly referenced from game
+        if (game && game.camera) {
+            this.camera = game.camera;
+        } else {
+            console.warn(`%c HumanPlayer constructor: No camera available from game (player: ${this.id})`, 'color: orange;');
+        }
         
         // First-person camera
         this.fpCamera = null;
@@ -25,10 +47,9 @@ class HumanPlayer extends Player {
         this.weapon = null;
         this.isFiring = false;
         
-        // Prevent delayed setup from running if player is cleaned up
-        this.isActive = true;
-        
-        console.log('HumanPlayer constructor - first person mode:', this.isFirstPerson);
+        // CRITICAL FIX: Debug player state
+        console.log(`%c HumanPlayer constructor - isActive: ${this.isActive}, isLocal: ${this.isLocal}`, 'color: #aaf;');
+        console.log(`%c HumanPlayer constructor - firstPersonMode: ${this.isFirstPerson}`, 'color: #aaf;');
         
         // Initialize components
         this.setPhysics(new HumanPhysics(options.physics || {}));
@@ -57,19 +78,28 @@ class HumanPlayer extends Player {
             // Double-check that camera is properly set as active with a small delay
             setTimeout(() => {
                 if (this.isActive && this.isFirstPerson && this.fpCamera && this.game) {
-                    console.log('Ensuring first-person camera is active after small delay');
+                    console.log(`%c Ensuring first-person camera is active after small delay (player: ${this.id}, isActive: ${this.isActive})`, 'color: #afa;');
                     this.game.setActiveCamera(this.fpCamera);
+                } else {
+                    console.log(`%c NOT activating camera for player: ${this.id}, isActive: ${this.isActive}`, 'color: #faa;');
                 }
             }, 100);
         }
     }
     
     init() {
-        console.log('HumanPlayer: Starting initialization');
+        console.log(`HumanPlayer: Starting initialization (player: ${this.id}, isActive: ${this.isActive})`);
         
         // Ensure we have access to the game and asset loader
         if (!this.game || !this.game.assetLoader) {
             console.error('HumanPlayer: Game or AssetLoader not available!');
+            return;
+        }
+        
+        // Check for scene reference
+        if (!this.game.scene) {
+            console.error('HumanPlayer: Scene reference is missing from game object!');
+            console.log('Game object:', this.game);
             return;
         }
         
@@ -98,10 +128,16 @@ class HumanPlayer extends Player {
             });
             
             console.log('HumanPlayer: Adding model to scene');
-            this.scene.add(this.model);
+            if (this.game && this.game.scene) {
+                this.game.scene.add(this.model);
+                console.log('HumanPlayer: Model added to scene successfully');
+            } else {
+                console.error('HumanPlayer: Cannot add model to scene - scene reference is missing!');
+            }
+            
             this.position.copy(this.model.position);
             
-            console.log('HumanPlayer: Model added to scene. Position:', this.model.position);
+            console.log('HumanPlayer: Model position:', this.model.position);
             console.log('HumanPlayer: Model parent:', this.model.parent ? this.model.parent.uuid : 'none');
             console.log('HumanPlayer: Model visible:', this.model.visible);
             console.log('HumanPlayer: Model children count:', this.model.children.length);
@@ -238,6 +274,72 @@ class HumanPlayer extends Player {
     }
     
     /**
+     * Override the update method to add better debugging
+     * @param {number} delta - Time since last update in seconds
+     * @param {boolean} processInput - Whether to process input controls
+     */
+    update(deltaTime, processInput = true) {
+        // ENHANCED LOGGING: HumanPlayer-specific logging
+        if (Math.random() < 0.02) { // Approximately once every 50 frames
+            console.log(
+                `%c 👨‍🚒 MERC UPDATE: ${this.id} - isActive=${this.isActive}, processInput=${processInput}, isFirstPerson=${this.isFirstPerson}`, 
+                'background: #a52; color: #fda; font-size: 12px; padding: 3px;'
+            );
+            
+            if (this.fpCamera) {
+                console.log(
+                    `%c 📷 FP Camera state: ${this.fpCamera.uuid}`, 
+                    'background: #522; color: #fda; padding: 2px;',
+                    `Position: (${this.fpCamera.position.x.toFixed(2)}, ${this.fpCamera.position.y.toFixed(2)}, ${this.fpCamera.position.z.toFixed(2)})`
+                );
+            }
+            
+            // Log weapon state
+            if (this.weapon) {
+                console.log(
+                    `%c 🔫 Weapon state:`, 
+                    'background: #522; color: #fda; padding: 2px;',
+                    `Type: ${this.weapon.constructor.name}`
+                );
+            }
+        }
+        
+        // First call parent update method to handle common player logic
+        super.update(deltaTime, processInput);
+        
+        // Deal with view mode changes
+        if (this.isFirstPerson !== this.wasFirstPerson) {
+            // Log mode change
+            console.log(`%c 👀 MERC VIEW MODE CHANGE: ${this.wasFirstPerson ? 'First → Third' : 'Third → First'} person`, 
+                       'background: orange; color: black; padding: 3px;');
+            
+            this.wasFirstPerson = this.isFirstPerson;
+        }
+        
+        // Skip remaining updates if we don't have a model
+        if (!this.model) {
+            if (Math.random() < 0.05) { // Only log occasionally
+                console.log(`%c ⚠️ No model found for human player ${this.id}`, 'color: red;');
+            }
+            return;
+        }
+        
+        // Update camera position for this human player if active
+        if (this.isActive) {
+            this.updateCameraPosition();
+            
+            // FIXED: Use this.weapon consistently instead of weaponSystem
+            if (this.weapon && processInput) {
+                this.weapon.update(deltaTime);
+                
+                if (Math.random() < 0.01) {
+                    console.log(`%c 🔫 Updating weapon for ${this.id}`, 'background: #525; color: #faf; padding: 2px;');
+                }
+            }
+        }
+    }
+    
+    /**
      * Start firing the weapon
      */
     startFiring() {
@@ -256,36 +358,6 @@ class HumanPlayer extends Player {
             this.isFiring = false;
             this.weapon.stopFire();
             console.log('Stopped firing weapon');
-        }
-    }
-    
-    update(delta) {
-        if (!this.model || !this.isActive) {
-            console.warn('HumanPlayer update: model not initialized or player not active');
-            return;
-        }
-        
-        // Call the component-based update from parent class
-        super.update(delta);
-        
-        // Check if view mode changed
-        const input = this.controls ? this.controls.getInput() : null;
-        if (input && input.firstPersonMode !== this.isFirstPerson) {
-            console.log('View mode change detected in input, toggling view');
-            this.toggleViewMode(input.firstPersonMode);
-        }
-        
-        // Update camera position for third-person
-        if (!this.isFirstPerson) {
-            this.updateCameraPosition();
-        } else if (this.fpCamera && input) {
-            // Update first-person camera rotation based on look direction
-            this.updateFirstPersonCamera(input.lookDirection);
-        }
-        
-        // Update weapon system
-        if (this.weapon) {
-            this.weapon.update(delta);
         }
     }
     
@@ -441,7 +513,25 @@ class HumanPlayer extends Player {
      * Update third-person camera position
      */
     updateCameraPosition() {
-        if (!this.model || this.isFirstPerson || !this.isActive) return;
+        // CRITICAL FIX: Add more robust defensive checks
+        if (!this.model || this.isFirstPerson || !this.isActive) {
+            return;
+        }
+        
+        // CRITICAL FIX: Check if camera exists
+        if (!this.camera) {
+            if (Math.random() < 0.01) { // Log occasionally to prevent spam
+                console.log(`%c HumanPlayer: Cannot update camera position - camera is null (player: ${this.id})`, 'color: orange;');
+            }
+            
+            // Try to use game camera if available
+            if (this.game && this.game.camera) {
+                this.camera = this.game.camera;
+                console.log(`%c HumanPlayer: Using game camera as fallback (player: ${this.id})`, 'color: #afa;');
+            } else {
+                return; // No camera available at all
+            }
+        }
         
         // Get orbit state from controls
         const orbitState = this.controls ? this.controls.cameraOrbit : { cameraAngle: 0, cameraAngleY: 0 };
@@ -453,12 +543,18 @@ class HumanPlayer extends Player {
             Math.cos(orbitState.cameraAngle) * this.thirdPersonDistance
         );
         
-        // Set camera position
-        this.camera.position.copy(this.model.position).add(cameraOffset);
-        
-        // Set camera target position (at eye level of player)
-        this.cameraTarget.copy(this.model.position).add(new THREE.Vector3(0, this.eyeHeight, 0));
-        this.camera.lookAt(this.cameraTarget);
+        // Set camera position with additional safety check
+        if (this.camera && this.camera.position) {
+            this.camera.position.copy(this.model.position).add(cameraOffset);
+            
+            // Set camera target position (at eye level of player)
+            this.cameraTarget.copy(this.model.position).add(new THREE.Vector3(0, this.eyeHeight, 0));
+            
+            // Make sure lookAt is safe
+            if (typeof this.camera.lookAt === 'function') {
+                this.camera.lookAt(this.cameraTarget);
+            }
+        }
     }
     
     onInstructionsDismissed() {

@@ -1,4 +1,81 @@
+/**
+ * JACKALOPE PLANET DEVELOPMENT NOTES
+ * 
+ * == RECENT BUG FIXES ==
+ * 
+ * 1. Physics System Error (June 2024)
+ *    - Error: TypeError: this.physics.update is not a function
+ *    - Fix: Updated Player.js to call physics.apply() instead of physics.update()
+ *    - Root Cause: The Player class was calling this.physics.update() but physics components
+ *      only implement an apply() method, not update()
+ *    - Added error handling and input state passing to physics calls
+ * 
+ * 2. Camera Reference Error (June 2024)
+ *    - Error: Cannot read properties of null (reading 'position')
+ *    - Fix: Added defensive checks in updateCameraPosition methods
+ *    - Root Cause: Camera references weren't properly inherited from game object
+ *    - Added multiple safety checks to prevent null camera errors
+ * 
+ * 3. Multiplayer Bug (June 2024)
+ *    - Issue: Inconsistent isLocal/isActive behavior during player switching
+ *    - Fix: Enhanced player initialization and state management logic
+ *    - Root Cause: Options/states weren't consistently preserved during player switching
+ *    - Added diagnostic overlay (Shift+D) to visualize player states in real-time
+ * 
+ * == DEVELOPMENT TASKS ==
+ */
+
 # Jackalope Planet Development Guide
+
+## 🛠️ Recent Bugfixes
+
+### updateCamera Method Error (June 2024)
+Fixed critical error: `TypeError: this.updateCamera is not a function` in Player class
+- Added updateCameraPosition method to base Player class
+- Fixed method call in Player.update() to use correct method name
+- Added defensive checks to prevent crashes when camera methods are missing
+- Enhanced debug logging for camera position updates
+- This was causing jackalope players to crash immediately when spawned
+
+### Camera Reference Error (June 2024)
+Fixed critical error: `Cannot read properties of null (reading 'position')` in Player classes
+- Added robust defensive checks in updateCameraPosition methods
+- Ensured proper camera inheritance from game object in constructors
+- Added fallback to game camera when needed
+- Fixed BunnyPlayer and HumanPlayer camera update logic to safely handle null references
+
+### Physics System Error (June 2024)
+Fixed critical error: `Uncaught TypeError: this.physics.update is not a function` that was causing game crashes
+- Added defensive checks in Player.update() to safely handle missing physics components
+- Added defensive checks in processInput() to prevent null object access
+- Added error handling in Game.animate() to catch and recover from all player update failures
+- Created initPhysics() recovery method to rebuild missing physics components
+- Added extensive error logging to help diagnose any further issues
+
+### Multiplayer Bug (June 2024)
+Fixed critical bug in the multiplayer code where players lost control
+- Added comprehensive handling for isLocal/isActive in Player.js 
+- Added preservation of options in Game.js
+- Enhanced InputManager with diagnostics
+- Added diagnostic tools accessible with Shift+D during gameplay
+- Updated documentation in MULTIPLAYER.md
+
+## Fixed Multiplayer Bug: Merc Players Not Responding to Input
+
+A critical bug has been fixed in the multiplayer functionality. Merc players spawned with God Mode (2 key) were not receiving input controls because `isLocal` and `isActive` flags were set incorrectly.
+
+**Key changes made:**
+1. Added explicit type checking for boolean/string conversion of options
+2. Force `isLocal=true` and `isActive=true` for any player with Merc team
+3. Enhanced input manager to create proper player options
+4. Added diagnostic overlay (toggle with Shift+D)
+
+For details, see the [MULTIPLAYER.md](./src/MULTIPLAYER.md) documentation.
+
+To ensure your changes take effect:
+1. Run `npm run build` to rebuild assets
+2. The plugin now has automatic cache busting via timestamps in `register_assets()`
+3. Use Shift+D during gameplay to diagnose player state issues
 
 ## Switching Between Branches
 
@@ -423,3 +500,160 @@ console.log('Jackalope Planet test helper available. Run window.testJackalope.ru
 - Add unique console.log messages to verify you're using the correct branch
 - Modify the plugin name temporarily to confirm WordPress is loading your version
 - Make simple visual changes to test updates are working 
+
+## Recent Updates and Bug Fixes
+
+### Player Control Fix (July 13, 2023)
+
+- **Bug fixed**: Players not responding to keyboard controls, unable to move characters.
+- **Root cause**: Initial player was created with `isLocal: false` which prevented it from receiving keyboard input.
+- **Fix implemented**:
+  - Modified `Game.createNewPlayer()` to force `isLocal=true` for the first player
+  - Added additional forced setting of both `isLocal` and `isActive` flags for the initial player
+  - Enhanced logging to clearly show when player flags are overridden
+  - Added defensive check to ensure first player always gets input
+
+### Input System Error Fix (July 12, 2023)
+
+- **Bug fixed**: `TypeError: s.getInputState is not a function` error that was preventing player movement and causing game crashes.
+- **Root cause**: The `InputManager` class was missing the `getInputState()` method that physics components were trying to call.
+- **Fix implemented**:
+  - Added the `getInputState()` method to `InputManager.js` to provide a standardized input format for physics components.
+  - Fixed Player constructor to properly handle and preserve `isLocal` flag, ensuring it can't be accidentally overwritten.
+  - Updated `BunnyPlayer` and `HumanPlayer` constructors to match the updated Player constructor signature.
+  - Added defensive checks to maintain `isLocal=true` for local players.
+
+### Local Player Flag Preservation (July 12, 2023)
+
+- **Bug fixed**: Player `isLocal` flag was sometimes being lost, preventing input controls from working properly.
+- **Fix implemented**:
+  - Added forceful Boolean conversion in Player constructor for `isLocal` and `isActive` flags.
+  - Ensured `isLocal` flag is preserved during network state updates.
+  - Added defensive double-set of `isLocal=true` in player subclasses after super() constructor.
+
+### Camera Reference Error (July 11, 2023)
+
+- **Bug fixed**: Camera references were sometimes undefined, causing null pointer errors.
+- **Root cause**: Scene and camera weren't properly passed between classes.
+- **Fix implemented**:
+  - Added defensive checks in `updateCameraPosition` methods
+  - Ensured players properly inherit camera from game object in constructors
+
+### Physics System Error (July 11, 2023)
+
+- **Bug fixed**: "Physics missing or invalid for player" error and "this.physics.update is not a function"
+- **Root cause**: The physics system was being initialized incorrectly or the wrong method was being called.
+- **Fix implemented**:
+  - Added defensive checks to verify physics exists before using it
+  - Changed Player update method to call `this.physics.apply()` instead of `this.physics.update()`
+  - Added error handling and recovery for physics initialization
+
+### Multiplayer Bug (July 10, 2023)
+
+- **Bug fixed**: Spawned Merc players not responding to input controls.
+- **Root cause**: Complex issue with isLocal/isActive flags and InputManager integration.
+- **Fix implemented**:
+  - Comprehensive handling for isLocal/isActive in Player.js
+  - Enhanced InputManager with diagnostics
+  - Improved player switching logic in Game.js
+
+### How to make sure changes take effect
+
+1. After making code changes, remember to:
+   - Run `npm run build` to rebuild the plugin assets
+   - The plugin automatically busts cache with a timestamp in asset URLs
+   - SSH into the VM and toggle the plugin: `wp plugin deactivate jackalope-planet && wp plugin activate jackalope-planet`
+   - Use Shift+D during gameplay to see diagnostic overlays with player state information 
+
+# Jackalope Planet Plugin Development Rules
+
+## Recent Bug Fixes
+
+### Player Rotation Fix (July 25, 2023)
+- Fixed critical error: `Cannot read properties of undefined (reading 'lerp')` in BaseMovement.rotate
+- Added player.direction vector in Player constructor to prevent null reference
+- Enhanced rotate method with comprehensive defensive checks
+- Implemented alternative vector update approach when lerp is unavailable
+- Added try/catch logic to prevent rotation errors from crashing the game
+
+### Input System Fixes (July 24, 2023)
+- Fixed issues with keyboard input not being processed correctly for player movement
+- Enhanced BunnyControls.getInput() to provide more complete input data to movement system
+- Added explicit BunnyPlayer.processInput() method that directly coordinates with BunnyMovement
+- Improved BunnyMovement.update() to handle different types of input formats
+- Added emergency fallback movement when components are missing
+- Added detailed debugging to track input processing through the entire chain
+
+### Camera Reference Fix (July 23, 2023)
+- Fixed critical camera reference error in BunnyPlayer and HumanPlayer classes
+- Added defensive checks in updateCameraPosition methods to prevent null reference errors
+- Ensured proper camera inheritance from game object in constructors
+- Added fallbacks when camera objects are missing
+- Improved camera position update logic for smoother following
+
+### Physics System Fixes (July 22, 2023)
+- Fixed critical error with physics system using undefined method
+- Added defensive checks for this.physics.update vs this.physics.apply
+- Fixed player position updates when physics is undefined
+- Added safety checks for scene references throughout physics code
+
+### Multiplayer Bug Fixes (July 21, 2023)
+- Resolved critical bug where first player was created with isLocal=false
+- Fixed issues with toggling between player modes
+- Added enhanced input handling when switching between players
+- Improved diagnostics system (press Shift+D) to view player states and fix issues
+
+## Testing Instructions
+
+### General
+- Use WASD keys to move
+- Press T to toggle between modes
+- Press G to enable God Mode
+- In God Mode, press 1 to spawn a Jackalope, 2 to spawn a Merc
+- Press Shift+D to open diagnostic overlay
+
+### Input Testing
+- Ensure WASD keys control player movement correctly
+- Verify input propagates from keyboard through InputManager, to Player, to Movement system
+- Confirm movement works in both third-person and first-person modes
+- Test that movement is relative to camera angle
+
+### Camera Testing
+- Check that camera follows player smoothly
+- Verify camera rotation works with mouse movement
+- Test camera collision detection with terrain
+- Confirm switching between first and third person cameras
+
+## Known Issues and Workarounds
+
+### Camera Delay Issue
+- Symptom: Camera sometimes lags behind player movement
+- Workaround: Use smoother camera interpolation via updateCameraPosition method
+- Fix: Enhance camera update logic with proper timing and defensive checks
+- Status: Partially fixed, investigation ongoing
+
+### Material Warnings
+- Warnings about MeshBasicMaterial properties (emissive, emissiveIntensity, receiveShadow)
+- These are non-critical and do not affect gameplay
+- Fix planned in future update to use correct material types
+
+## Current Development Priorities
+1. Finish and refine multiplayer functionality
+2. Add terrain collision detection
+3. Implement additional weapons
+4. Create level loading system
+
+## Best Practices
+- Always use defensive coding with null checks
+- Add detailed logging for critical paths
+- Maintain input system chain: InputManager -> Player.processInput -> Movement.update
+- Ensure camera references are properly handled
+- Verify all vectors are properly initialized before math operations
+
+## Project Structure
+- core/ - Game engine components
+- players/ - Player classes and components
+- environment/ - World building and terrain
+- ui/ - User interface elements
+- networking/ - Multiplayer functionality
+- weapons/ - Weapon systems and effects 

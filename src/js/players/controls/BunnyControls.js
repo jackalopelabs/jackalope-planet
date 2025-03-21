@@ -126,17 +126,36 @@ class BunnyControls extends BaseControls {
     }
 
     /**
-     * Get current input state
+     * Get combined input state
      * @returns {Object} Combined input state from keyboard, mouse, and gamepad
      */
     getInput() {
         // Create movement direction vector from WASD keys
         const moveDirection = new THREE.Vector3(0, 0, 0);
         
-        if (this.keys['w'] || this.keys['arrowup']) moveDirection.z = -1;
-        if (this.keys['s'] || this.keys['arrowdown']) moveDirection.z = 1;
-        if (this.keys['a'] || this.keys['arrowleft']) moveDirection.x = -1;
-        if (this.keys['d'] || this.keys['arrowright']) moveDirection.x = 1;
+        // Check for movement keys with better debugging
+        const isWPressed = this.keys['w'] || this.keys['arrowup'] || false;
+        const isSPressed = this.keys['s'] || this.keys['arrowdown'] || false;
+        const isAPressed = this.keys['a'] || this.keys['arrowleft'] || false;
+        const isDPressed = this.keys['d'] || this.keys['arrowright'] || false;
+        
+        // Occasionally log key state for debugging
+        if (Math.random() < 0.01) {
+            console.log(`%c 🎮 BunnyControls key state:`, 'color: #aaf;', {
+                w: isWPressed,
+                a: isAPressed,
+                s: isSPressed,
+                d: isDPressed,
+                shift: this.keys['shift'] || false,
+                space: this.keys[' '] || false
+            });
+        }
+        
+        // Set movement direction based on key state
+        if (isWPressed) moveDirection.z = -1;
+        if (isSPressed) moveDirection.z = 1;
+        if (isAPressed) moveDirection.x = -1;
+        if (isDPressed) moveDirection.x = 1;
         
         // Normalize for diagonal movement
         if (moveDirection.length() > 1) {
@@ -150,6 +169,8 @@ class BunnyControls extends BaseControls {
             interact: this.keys['e'] || this.mouseState.buttons[0] || false
         };
         
+        // Create enhanced input object that includes both directional vector AND raw key state
+        // This ensures the player movement can handle inputs consistently
         return {
             moveDirection,
             lookDirection: new THREE.Vector2(
@@ -157,7 +178,21 @@ class BunnyControls extends BaseControls {
                 this.mouseState.movement.y
             ),
             actions,
-            cameraOrbit: { ...this.cameraOrbit }
+            cameraOrbit: { ...this.cameraOrbit },
+            // Add raw key state to ensure Player.processInput can access it directly
+            keys: {
+                w: isWPressed,
+                a: isAPressed,
+                s: isSPressed,
+                d: isDPressed,
+                shift: this.keys['shift'] || false,
+                space: this.keys[' '] || false
+            },
+            // Add redundant movement flags to ensure compatibility with all systems
+            moveForward: isWPressed,
+            moveBackward: isSPressed,
+            moveLeft: isAPressed,
+            moveRight: isDPressed
         };
     }
 

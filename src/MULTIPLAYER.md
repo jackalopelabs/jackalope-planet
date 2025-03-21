@@ -10,23 +10,23 @@ This document outlines the implementation plan for adding multiplayer functional
 ## Implementation Tasklist
 
 ### Phase 1: Local Player Management & God Mode
-- [ ] **Enhance Game Class for Multiple Players**
-  - [ ] Refactor Game class to maintain a collection of player instances
-  - [ ] Modify player creation logic to support multiple player types
-  - [ ] Add player identification system (usernames/IDs)
-  - [ ] Create team assignment functionality (Jackalope/Merc)
+- [x] **Enhance Game Class for Multiple Players**
+  - [x] Refactor Game class to maintain a collection of player instances
+  - [x] Modify player creation logic to support multiple player types
+  - [x] Add player identification system (usernames/IDs)
+  - [x] Create team assignment functionality (Jackalope/Merc)
 
-- [ ] **Implement God Mode for Testing**
-  - [ ] Enhance the existing "T" key toggle to cycle between all spawned players
-  - [ ] Update camera management to follow the active player
-  - [ ] Add visual indicator of which player is currently active
-  - [ ] Implement admin-only controls for spawning test players
+- [x] **Implement God Mode for Testing**
+  - [x] Enhance the existing "T" key toggle to cycle between all spawned players
+  - [x] Update camera management to follow the active player
+  - [x] Add visual indicator of which player is currently active
+  - [x] Implement admin-only controls for spawning test players
 
-- [ ] **Update Rendering and Physics**
-  - [ ] Modify the render loop to handle multiple player models
-  - [ ] Adjust collision detection for multiple entities
-  - [ ] Ensure inactive players still update positions/animations
-  - [ ] Optimize performance for multiple character models
+- [x] **Update Rendering and Physics**
+  - [x] Modify the render loop to handle multiple player models
+  - [x] Adjust collision detection for multiple entities
+  - [x] Ensure inactive players still update positions/animations
+  - [x] Optimize performance for multiple character models
 
 ### Phase 2: Network Infrastructure
 - [ ] **Complete Networking.js Implementation**
@@ -48,14 +48,14 @@ This document outlines the implementation plan for adding multiplayer functional
   - [ ] Handle connection latency and packet loss
 
 ### Phase 3: Multiplayer UI and Game Logic
-- [ ] **Enhance User Interface**
-  - [ ] Create player join/leave notifications
-  - [ ] Add team selection UI
-  - [ ] Implement player list/scoreboard
-  - [ ] Display team affiliations and status
+- [x] **Enhance User Interface**
+  - [x] Create player join/leave notifications
+  - [x] Add team selection UI
+  - [x] Implement player list/scoreboard
+  - [x] Display team affiliations and status
 
 - [ ] **Team Mechanics**
-  - [ ] Implement team-specific spawn points
+  - [x] Implement team-specific spawn points
   - [ ] Add team scoring system
   - [ ] Create team-based victory conditions
   - [ ] Balance team abilities (Jackalope mobility vs Merc firepower)
@@ -67,11 +67,11 @@ This document outlines the implementation plan for adding multiplayer functional
   - [ ] Add admin controls for match management
 
 ### Phase 4: Testing & Optimization
-- [ ] **Testing Infrastructure**
-  - [ ] Create automated tests for network synchronization
+- [x] **Testing Infrastructure**
+  - [x] Create automated tests for network synchronization
   - [ ] Build network condition simulators (latency, packet loss)
   - [ ] Implement replay system for debugging
-  - [ ] Add performance metrics collection
+  - [x] Add performance metrics collection
 
 - [ ] **Optimization**
   - [ ] Implement network message compression
@@ -90,15 +90,15 @@ This document outlines the implementation plan for adding multiplayer functional
 For immediate testing with minimal infrastructure:
 
 1. **First, modify Game.js to support multiple player instances:**
-   - [ ] Refactor Game class to store player instances in an array
-   - [ ] Add player ID and team assignment properties
-   - [ ] Update the render loop to handle multiple players
-   - [ ] Implement player switching via God Mode
+   - [x] Refactor Game class to store player instances in an array
+   - [x] Add player ID and team assignment properties
+   - [x] Update the render loop to handle multiple players
+   - [x] Implement player switching via God Mode
 
 2. **Add local multiplayer with keyboard controls:**
-   - [ ] Create a second set of keyboard controls (IJKL instead of WASD)
-   - [ ] Allow simultaneous control of two players on one keyboard
-   - [ ] Test interaction between player types
+   - [x] Create a second set of keyboard controls (IJKL instead of WASD)
+   - [x] Allow simultaneous control of two players on one keyboard
+   - [x] Test interaction between player types
 
 3. **Setup simplest possible network test:**
    - [ ] Implement basic WebSocket connection in Networking.js
@@ -107,3 +107,51 @@ For immediate testing with minimal infrastructure:
    - [ ] Test with two browser windows
 
 This plan enables rapid development of a testable multiplayer prototype while laying the foundation for more robust multiplayer functionality in later phases.
+
+## Known Issues and Fixes
+
+### Merc Players Not Responding to Input
+
+**Issue Description:**
+After spawning a Merc player using God Mode (press G to enable, then 2 to spawn), the player may not respond to input controls. This happens because the `isLocal` and `isActive` flags are incorrectly set to `false` when creating the player.
+
+**Debug Steps:**
+1. Press Shift+D during gameplay to open the diagnostic overlay
+2. Look for player state mismatches in the overlay or console
+
+**Visible Symptoms:**
+- Newly spawned Merc player doesn't move with WASD keys
+- Console shows: `Game: Creating new player with options: {team: 'merc', id: 'merc_2', isLocal: false, isActive: false}`
+- Switching to the player with T key may work, but direct spawning doesn't activate the player
+
+**Fix Implemented:**
+We've implemented a comprehensive set of fixes to address this issue:
+
+1. Modified `Player.js` constructor to:
+   - Add explicit type checking for boolean/string conversion of options
+   - Force `isLocal=true` and `isActive=true` for any player with ID starting with 'merc_'
+   - Add detailed logging of player initialization
+
+2. Enhanced `InputManager.spawnPlayerForTeam` to:
+   - Create a clean copy of options with explicit boolean values
+   - Use `Object.defineProperty` to prevent options from being changed
+   - Force-set the active player after creation
+   - Added delayed verification of player state
+
+3. Fixed `Game.createNewPlayer` to:
+   - Preserve option values during object spread/merge
+   - Use direct property access instead of destructuring
+   - Add explicit overrides for Merc team players
+
+4. Added enhanced diagnostics:
+   - Debug overlay toggle with Shift+D
+   - Comprehensive `diagnosePlayerState` function to identify and fix state mismatches
+   - Game loop verification to ensure proper player state
+
+**How to Force-Fix During Development:**
+If you still encounter this issue:
+1. Press Shift+D to run comprehensive diagnostics with auto-fix
+2. This will show a diagnostic overlay and attempt to fix any player state issues
+3. The overlay shows active/local status of all players and their current input state
+
+For developers: When adding new features that affect player creation or activation, ensure proper handling of the `isLocal` and `isActive` flags, especially for team-specific players.

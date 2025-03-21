@@ -88,23 +88,48 @@ class BunnyPhysics extends BasePhysics {
      * @param {Object} input - Input state from InputManager
      */
     apply(player, delta, input = {}) {
+        // DEBUG: Add more detailed logging for physics updates
+        const debugPhysics = Math.random() < 0.01; // Log occasionally
+        
+        if (debugPhysics) {
+            console.log(`%c 🪂 BunnyPhysics.apply for player ${player.id}:`, 'color: #afa;', {
+                input: input,
+                hasVelocity: !!player.velocity,
+                playerPos: player.position?.clone(),
+                modelPos: player.model?.position?.clone(),
+                isGrounded: player.isGrounded
+            });
+        }
+        
+        // Initialize velocity if it doesn't exist
         if (!player.velocity) {
             player.velocity = new THREE.Vector3(0, 0, 0);
             player.isGrounded = true;
+            console.log(`%c 🪂 Created velocity for player ${player.id}`, 'color: #afa;');
+        }
+        
+        // CRITICAL: Verify player and model exist before proceeding
+        if (!player || !player.model) {
+            console.warn(`%c 🪂 Cannot apply physics - player model missing for ${player?.id || 'unknown'}`, 'color: orange;');
+            return;
         }
         
         // Get terrain height at current position
-        const terrainHeight = this.getTerrainHeight(player.model?.position || player.position);
+        const terrainHeight = this.getTerrainHeight(player.model.position || player.position);
         
         // Calculate minimum height including the player's ground offset
         const minHeight = terrainHeight + this.groundLevel;
         
         // Fix position if below terrain
-        if (player.model && player.model.position.y < minHeight) {
+        if (player.model.position.y < minHeight) {
             player.model.position.y = minHeight;
             player.position.copy(player.model.position);
             player.isGrounded = true;
             player.velocity.y = 0;
+            
+            if (debugPhysics) {
+                console.log(`%c 🪂 Grounded player at height ${minHeight.toFixed(2)}`, 'color: #afa;');
+            }
         }
         
         // Handle jumping when jump action is triggered and player is grounded
@@ -113,13 +138,17 @@ class BunnyPhysics extends BasePhysics {
         if (shouldJump && player.isGrounded) {
             player.velocity.y = 4.0; // Lower jump height (was 5.0)
             player.isGrounded = false;
-            console.log('Bunny hop!');
+            console.log(`%c 🪂 Bunny hop! Player ${player.id}`, 'color: #ff9;');
         }
         
         // Apply gravity with floatiness factor (bunnies fall slower)
         if (!player.isGrounded) {
             const adjustedGravity = this.gravity * this.floatiness;
             player.velocity.y -= adjustedGravity * delta;
+            
+            if (debugPhysics) {
+                console.log(`%c 🪂 Applied gravity: ${adjustedGravity.toFixed(2)}, new Y velocity: ${player.velocity.y.toFixed(2)}`, 'color: #afa;');
+            }
         }
         
         // Apply air resistance when jumping/falling
@@ -142,7 +171,22 @@ class BunnyPhysics extends BasePhysics {
         // Apply velocity to position (only Y component from physics)
         // XZ movement is handled by the movement component
         const verticalMovement = new THREE.Vector3(0, player.velocity.y * delta, 0);
-        player.movePlayer(verticalMovement);
+        
+        if (debugPhysics) {
+            console.log(`%c 🪂 Moving player by: ${verticalMovement.y.toFixed(4)} units`, 'color: #afa;');
+        }
+        
+        // CRITICAL: Ensure movePlayer method exists before calling it
+        if (typeof player.movePlayer === 'function') {
+            player.movePlayer(verticalMovement);
+        } else {
+            console.warn(`%c 🪂 Cannot move player - movePlayer method missing for ${player.id}`, 'color: orange;');
+            // Apply movement directly
+            if (player.model && player.model.position) {
+                player.model.position.add(verticalMovement);
+                player.position.copy(player.model.position);
+            }
+        }
         
         // Check terrain collision after movement
         const newTerrainHeight = this.getTerrainHeight(player.model?.position || player.position);
